@@ -15,6 +15,8 @@ Everything from upstream Scratch, plus:
 - **Wiki link graph view** — a force-directed graph of all notes connected by `[[wikilinks]]`. Nodes are sized by link count and float gently; edges are directional arrows. Hover to highlight neighbors, drag to rearrange, scroll to zoom, click a node to open that note. Dashed hollow nodes are links pointing to notes that don't exist yet. Open with `Ctrl/Cmd+Shift+G` or the command palette.
 - **Hover page preview** — hover a `[[wikilink]]` to preview the target note in a floating read-only popup, rendered with the same engine as the editor (math, mermaid, tables, code). Links inside a preview preview too, stacking up to 3 levels deep — like Obsidian's page previews. Click a link inside a preview to navigate; `Esc` closes the topmost popup.
 - **In-app updates from this fork** — the updater checks this fork's GitHub releases (signed with the fork's own key). See [Releasing an update](#releasing-an-update).
+- **Custom editor font** — pick any font installed on your system: Settings → Appearance → Typography → Font → Custom, with a searchable list that previews each font in itself. Falls back gracefully for missing glyphs.
+- **Windows AI-provider detection fixes** — Codex and OpenCode are now found even when they aren't on `PATH`: the Codex Windows app (which ships `codex.exe` under `%LOCALAPPDATA%\OpenAI\Codex\bin\`) and OpenCode's `~/.opencode/bin` install location are probed directly.
 
 ## Features
 

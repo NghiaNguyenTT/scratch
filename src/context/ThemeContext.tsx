@@ -28,7 +28,26 @@ const fontFamilyMap: Record<FontFamily, string> = {
   serif: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
   monospace:
     "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, 'Courier New', monospace",
+  // Placeholder fallback when "custom" is selected without a family name
+  custom: "system-ui, sans-serif",
 };
+
+// Quote a user-chosen font family safely for CSS, falling back to the
+// sans stack so missing glyphs (math, CJK, emoji) still render.
+export function fontFamilyStackFor(
+  baseFontFamily: FontFamily,
+  customFontFamily?: string,
+): string {
+  if (baseFontFamily === "custom") {
+    const name = customFontFamily?.trim();
+    if (name) {
+      const escaped = name.replace(/[\\"]/g, "\\$&");
+      return `"${escaped}", ${fontFamilyMap["system-sans"]}`;
+    }
+    return fontFamilyMap.custom;
+  }
+  return fontFamilyMap[baseFontFamily];
+}
 
 // Editor width CSS values for presets
 const editorWidthMap: Record<Exclude<EditorWidth, "custom">, string> = {
@@ -47,6 +66,7 @@ const defaultEditorFontSettings: Required<EditorFontSettings> = {
   baseFontSize: 15,
   boldWeight: 600,
   lineHeight: 1.6,
+  customFontFamily: "",
 };
 
 // Default theme colors (must match App.css :root / .dark values)
@@ -140,7 +160,10 @@ interface ThemeProviderProps {
 // Apply editor font CSS variables (with computed values)
 function applyFontCSSVariables(fonts: Required<EditorFontSettings>) {
   const root = document.documentElement;
-  const fontFamily = fontFamilyMap[fonts.baseFontFamily];
+  const fontFamily = fontFamilyStackFor(
+    fonts.baseFontFamily,
+    fonts.customFontFamily,
+  );
   const baseSize = fonts.baseFontSize;
   const boldWeight = fonts.boldWeight;
   const lineHeight = fonts.lineHeight;

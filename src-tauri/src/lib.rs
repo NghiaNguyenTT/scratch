@@ -82,10 +82,11 @@ impl Default for ThemeSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct EditorFontSettings {
-    pub base_font_family: Option<String>, // "system-sans" | "serif" | "monospace"
+    pub base_font_family: Option<String>, // "system-sans" | "serif" | "monospace" | "custom"
     pub base_font_size: Option<f32>,      // in px, default 16
     pub bold_weight: Option<i32>,         // 600, 700, 800 for headings and bold
     pub line_height: Option<f32>,         // default 1.6
+    pub custom_font_family: Option<String>, // OS font family name when base is "custom"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -2952,54 +2953,86 @@ async fn git_push_with_upstream(state: State<'_, AppState>) -> Result<git::GitRe
     }
 }
 
-// Check if Claude CLI is installed
+// Build a PATH that also covers CLI install locations which installers may
+// not have added to the app's inherited PATH (GUI apps on Windows often start
+// with a stale or minimal PATH).
 fn get_expanded_path() -> String {
     let system_path = std::env::var("PATH").unwrap_or_default();
-    let home = std::env::var("HOME").unwrap_or_else(|_| String::new());
 
-    if home.is_empty() {
-        return system_path;
+    #[cfg(target_os = "windows")]
+    {
+        let mut dirs: Vec<PathBuf> = Vec::new();
+        // GUI apps on Windows have no HOME; USERPROFILE is the real home.
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_default();
+        if !home.is_empty() {
+            // OpenCode's official installer (~/.opencode/bin), native Codex
+            // installer (~/.codex/bin), and native-install CLIs (~/.local/bin)
+            for rel in [".opencode/bin", ".codex/bin", ".local/bin"] {
+                dirs.push(PathBuf::from(&home).join(rel));
+            }
+        }
+        // npm global shims (`npm i -g @openai/codex` etc.) when Node was
+        // installed from nodejs.org rather than a PATH-registered manager
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            dirs.push(PathBuf::from(appdata).join("npm"));
+        }
+        dirs.push(PathBuf::from(&system_path));
+        return std::env::join_paths(dirs.iter())
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or(system_path);
     }
 
-    // Common locations for node-installed CLIs (nvm, volta, fnm, mise, homebrew, global npm)
-    let candidate_dirs = vec![
-        format!("{home}/.nvm/versions/node"),
-        format!("{home}/.fnm/node-versions"),
-        format!("{home}/.local/share/mise/installs/node"),
-    ];
-    let static_dirs = vec![
-        format!("{home}/.bun/bin"),
-        format!("{home}/.volta/bin"),
-        format!("{home}/.local/bin"),
-        "/usr/local/bin".to_string(),
-        "/opt/homebrew/bin".to_string(),
-    ];
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = std::env::var("HOME").unwrap_or_else(|_| String::new());
 
-    let mut expanded = Vec::new();
+        if home.is_empty() {
+            return system_path;
+        }
 
-    // Prefer well-known static locations (e.g. ~/.local/bin for native CLI installs)
-    for dir in static_dirs {
-        expanded.push(dir);
-    }
+        // Common locations for node-installed CLIs (nvm, volta, fnm, mise, homebrew, global npm)
+        let candidate_dirs = vec![
+            format!("{home}/.nvm/versions/node"),
+            format!("{home}/.fnm/node-versions"),
+            format!("{home}/.local/share/mise/installs/node"),
+        ];
+        let static_dirs = vec![
+            format!("{home}/.bun/bin"),
+            format!("{home}/.volta/bin"),
+            format!("{home}/.local/bin"),
+            format!("{home}/.opencode/bin"),
+            "/usr/local/bin".to_string(),
+            "/opt/homebrew/bin".to_string(),
+        ];
 
-    // Then scan nvm/fnm node version dirs containing a bin/ folder
-    for base in &candidate_dirs {
-        if let Ok(entries) = std::fs::read_dir(base) {
-            for entry in entries.flatten() {
-                let bin_path = entry.path().join("bin");
-                if bin_path.exists() {
-                    expanded.push(bin_path.to_string_lossy().to_string());
+        let mut expanded = Vec::new();
+
+        // Prefer well-known static locations (e.g. ~/.local/bin for native CLI installs)
+        for dir in static_dirs {
+            expanded.push(dir);
+        }
+
+        // Then scan nvm/fnm node version dirs containing a bin/ folder
+        for base in &candidate_dirs {
+            if let Ok(entries) = std::fs::read_dir(base) {
+                for entry in entries.flatten() {
+                    let bin_path = entry.path().join("bin");
+                    if bin_path.exists() {
+                        expanded.push(bin_path.to_string_lossy().to_string());
+                    }
                 }
             }
         }
-    }
 
-    expanded.push(system_path);
-    expanded.join(":")
+        expanded.push(system_path);
+        expanded.join(":")
+    }
 }
 
 /// Create a `Command` that hides the console window on Windows.
-fn no_window_cmd(program: &str) -> std::process::Command {
+fn no_window_cmd<S: AsRef<std::ffi::OsStr>>(program: S) -> std::process::Command {
     let cmd = std::process::Command::new(program);
     #[cfg(target_os = "windows")]
     {
@@ -3014,7 +3047,12 @@ fn no_window_cmd(program: &str) -> std::process::Command {
     }
 }
 
-fn check_cli_exists(command_name: &str, path: &str) -> Result<bool, String> {
+/// Locate a CLI binary and return its absolute path when present.
+///
+/// Prefers `where`/`which` on an expanded PATH; on Windows falls back to the
+/// Codex Windows app, which ships `codex.exe` under
+/// `%LOCALAPPDATA%\OpenAI\Codex\bin\<build>\` without registering it on PATH.
+fn resolve_cli_path(command_name: &str, path: &str) -> Result<Option<PathBuf>, String> {
     let which_cmd = if cfg!(target_os = "windows") {
         "where"
     } else {
@@ -3027,7 +3065,73 @@ fn check_cli_exists(command_name: &str, path: &str) -> Result<bool, String> {
         .output()
         .map_err(|e| format!("Failed to check for {} CLI: {}", command_name, e))?;
 
-    Ok(check_output.status.success())
+    if check_output.status.success() {
+        if let Ok(stdout) = String::from_utf8(check_output.stdout) {
+            if let Some(line) = stdout.lines().next() {
+                let found = PathBuf::from(line.trim());
+                if found.exists() {
+                    #[cfg(target_os = "windows")]
+                    let found = prefer_windows_executable(found);
+                    return Ok(Some(found));
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    if command_name == "codex" {
+        if let Some(found) = find_codex_app_cli() {
+            return Ok(Some(found));
+        }
+    }
+
+    Ok(None)
+}
+
+fn resolve_cli_exists(command_name: &str, path: &str) -> Result<bool, String> {
+    Ok(resolve_cli_path(command_name, path)?.is_some())
+}
+
+/// `where` can return an extensionless shim (a POSIX script); CreateProcess
+/// can only launch `.exe` directly (`.cmd`/`.bat` go through cmd.exe), so
+/// prefer an executable sibling when the match has no extension.
+#[cfg(target_os = "windows")]
+fn prefer_windows_executable(found: PathBuf) -> PathBuf {
+    if found.extension().is_none() {
+        for ext in ["exe", "cmd", "bat"] {
+            let candidate = found.with_extension(ext);
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+    }
+    found
+}
+
+/// The Codex Windows app (MSIX) installs per-build CLI copies under
+/// `%LOCALAPPDATA%\OpenAI\Codex\bin\<build>\codex.exe` and adds nothing to
+/// PATH — probe that location directly, newest build first.
+#[cfg(target_os = "windows")]
+fn find_codex_app_cli() -> Option<PathBuf> {
+    let base = std::env::var("LOCALAPPDATA").ok()?;
+    let bin_root = PathBuf::from(base).join("OpenAI").join("Codex").join("bin");
+    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+    for entry in std::fs::read_dir(bin_root).ok()?.flatten() {
+        let candidate = entry.path().join("codex.exe");
+        let Ok(meta) = candidate.metadata() else {
+            continue;
+        };
+        if !meta.is_file() {
+            continue;
+        }
+        let mtime = meta
+            .modified()
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        if best.as_ref().is_none_or(|(t, _)| mtime > *t) {
+            best = Some((mtime, candidate));
+        }
+    }
+    best.map(|(_, p)| p)
 }
 
 /// Marker comment embedded in CLI wrapper scripts installed by Scratch.
@@ -3167,11 +3271,27 @@ fn uninstall_cli() -> Result<(), String> {
     }
 }
 
+/// Enumerate font families installed on the OS (for the custom editor font picker).
+#[tauri::command]
+async fn get_system_fonts() -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let mut families = font_kit::source::SystemSource::new()
+            .all_families()
+            .map_err(|e| format!("Failed to enumerate system fonts: {}", e))?;
+        families.retain(|f| !f.trim().is_empty());
+        families.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        families.dedup_by(|a, b| a.to_lowercase() == b.to_lowercase());
+        Ok(families)
+    })
+    .await
+    .map_err(|e| format!("Font enumeration failed: {}", e))?
+}
+
 #[tauri::command]
 async fn ai_check_claude_cli() -> Result<bool, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let path = get_expanded_path();
-        check_cli_exists("claude", &path)
+        resolve_cli_exists("claude", &path)
     })
     .await
     .map_err(|e| format!("Failed to check Claude CLI: {}", e))?
@@ -3181,7 +3301,7 @@ async fn ai_check_claude_cli() -> Result<bool, String> {
 async fn ai_check_codex_cli() -> Result<bool, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let path = get_expanded_path();
-        check_cli_exists("codex", &path)
+        resolve_cli_exists("codex", &path)
     })
     .await
     .map_err(|e| format!("Failed to check Codex CLI: {}", e))?
@@ -3191,7 +3311,7 @@ async fn ai_check_codex_cli() -> Result<bool, String> {
 async fn ai_check_opencode_cli() -> Result<bool, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let path = get_expanded_path();
-        check_cli_exists("opencode", &path)
+        resolve_cli_exists("opencode", &path)
     })
     .await
     .map_err(|e| format!("Failed to check OpenCode CLI: {}", e))?
@@ -3218,10 +3338,13 @@ async fn execute_ai_cli(
     let cli_name_task = cli_name.clone();
 
     let mut task = tauri::async_runtime::spawn_blocking(move || {
-        // Blocking I/O: expand PATH and check CLI exists
+        // Blocking I/O: expand PATH and resolve the CLI to an absolute path
+        // (CreateProcess may not honor the modified child PATH when searching
+        // for the executable, so always spawn the resolved location).
         let path = get_expanded_path();
-        match check_cli_exists(&command, &path) {
-            Ok(false) => {
+        let program = match resolve_cli_path(&command, &path) {
+            Ok(Some(p)) => p,
+            Ok(None) => {
                 return AiExecutionResult {
                     success: false,
                     output: String::new(),
@@ -3235,11 +3358,21 @@ async fn execute_ai_cli(
                     error: Some(e),
                 };
             }
-            Ok(true) => {}
-        }
+        };
 
-        let mut cmd = no_window_cmd(&command);
-        cmd.env("PATH", &path);
+        // Put the resolved binary's directory first so the CLI can find its
+        // own siblings (node shims, sandbox helpers, ...).
+        let child_path = match program.parent() {
+            Some(dir) => std::env::join_paths(
+                std::iter::once(dir.to_path_buf()).chain(std::env::split_paths(&path)),
+            )
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| path.clone()),
+            None => path.clone(),
+        };
+
+        let mut cmd = no_window_cmd(&program);
+        cmd.env("PATH", child_path);
         if let Some(dir) = &current_dir {
             cmd.current_dir(dir);
         }
@@ -3536,7 +3669,7 @@ async fn ai_execute_opencode(
 async fn ai_check_ollama_cli() -> Result<bool, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let path = get_expanded_path();
-        check_cli_exists("ollama", &path)
+        resolve_cli_exists("ollama", &path)
     })
     .await
     .map_err(|e| format!("Failed to check Ollama CLI: {}", e))?
@@ -4064,6 +4197,7 @@ pub fn run() {
             git_set_remote_url,
             git_remove_remote,
             git_push_with_upstream,
+            get_system_fonts,
             ai_check_claude_cli,
             ai_check_codex_cli,
             ai_check_opencode_cli,
@@ -4180,4 +4314,54 @@ fn set_title_bar_theme(
         let _ = (app, is_dark, r, g, b);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod cli_resolve_tests {
+    use super::*;
+
+    /// Regression test (Windows): OpenCode's installer dir must be found even
+    /// when it is missing from the app's inherited PATH.
+    #[test]
+    fn resolves_opencode_from_expanded_path() {
+        let path = get_expanded_path();
+        let found = resolve_cli_path("opencode", &path).expect("resolve failed");
+        assert!(
+            found.is_some(),
+            "opencode not found via expanded path {:?}",
+            found
+        );
+        let p = found.unwrap();
+        assert!(p.exists(), "resolved opencode path does not exist: {:?}", p);
+    }
+
+    /// Regression test (Windows): the Codex Windows app ships codex.exe under
+    /// %LOCALAPPDATA%\OpenAI\Codex\bin\<build>\ with no PATH entry — the
+    /// fallback must find it.
+    #[test]
+    fn resolves_codex_via_app_fallback() {
+        let path = get_expanded_path();
+        let found = resolve_cli_path("codex", &path).expect("resolve failed");
+        assert!(
+            found.is_some(),
+            "codex not found via Codex app fallback: {:?}",
+            found
+        );
+        let p = found.unwrap();
+        assert!(p.exists(), "resolved codex path does not exist: {:?}", p);
+        assert!(
+            p.to_string_lossy().to_lowercase().contains(r"openai\codex"),
+            "codex resolved to unexpected path: {:?}",
+            p
+        );
+    }
+
+    /// `resolve_cli_exists` must agree with the path resolver.
+    #[test]
+    fn exists_matches_path_resolution() {
+        let path = get_expanded_path();
+        let exists = resolve_cli_exists("codex", &path).expect("resolve failed");
+        let found = resolve_cli_path("codex", &path).expect("resolve failed");
+        assert_eq!(exists, found.is_some());
+    }
 }

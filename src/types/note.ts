@@ -17,7 +17,7 @@ export interface ThemeSettings {
   mode: "light" | "dark" | "system";
 }
 
-export type FontFamily = "system-sans" | "serif" | "monospace";
+export type FontFamily = "system-sans" | "serif" | "monospace" | "custom";
 export type TextDirection = "auto" | "ltr" | "rtl";
 export type EditorWidth = "narrow" | "normal" | "wide" | "full" | "custom";
 
@@ -26,6 +26,7 @@ export interface EditorFontSettings {
   baseFontSize?: number; // in px, default 16
   boldWeight?: number; // 600, 700, 800 for headings and bold text
   lineHeight?: number; // default 1.6
+  customFontFamily?: string; // OS font family name when baseFontFamily is "custom"
 }
 
 // Customizable theme color keys (maps to CSS --color-* variables)

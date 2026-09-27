@@ -1,4 +1,9 @@
-import { useTheme, defaultThemeColors } from "../../context/ThemeContext";
+import { useState, useEffect, useCallback } from "react";
+import {
+  useTheme,
+  defaultThemeColors,
+  fontFamilyStackFor,
+} from "../../context/ThemeContext";
 import { Button, CodeCopyButton, IconButton, Input, Select } from "../ui";
 import { ColorPicker } from "../ui/ColorPicker";
 import type {
@@ -7,8 +12,17 @@ import type {
   EditorWidth,
   ThemeColorKey,
 } from "../../types/note";
-import { ChevronRightIcon, EyeIcon, MinusIcon, PlusIcon } from "../icons";
+import {
+  ChevronRightIcon,
+  EyeIcon,
+  MinusIcon,
+  PlusIcon,
+  SpinnerIcon,
+  CheckIcon,
+  SearchIcon,
+} from "../icons";
 import { cn } from "../../lib/utils";
+import { getSystemFonts } from "../../services/fonts";
 
 // Human-readable labels for theme color keys, grouped logically
 const colorLabels: { key: ThemeColorKey; label: string; group: string }[] = [
@@ -46,6 +60,7 @@ const fontFamilyOptions: { value: FontFamily; label: string }[] = [
   { value: "system-sans", label: "Sans" },
   { value: "serif", label: "Serif" },
   { value: "monospace", label: "Mono" },
+  { value: "custom", label: "Custom" },
 ];
 
 // Bold weight options (medium excluded for monospace)
@@ -209,6 +224,16 @@ export function AppearanceSettingsSection() {
             </Select>
           </div>
 
+          {/* Custom font picker (shown when Font = Custom) */}
+          {editorFontSettings.baseFontFamily === "custom" && (
+            <CustomFontPicker
+              selected={editorFontSettings.customFontFamily}
+              onSelect={(family) =>
+                setEditorFontSetting("customFontFamily", family)
+              }
+            />
+          )}
+
           {/* Base Font Size */}
           <div className="flex items-center justify-between">
             <label className="text-sm text-text font-medium">Size</label>
@@ -367,11 +392,16 @@ export function AppearanceSettingsSection() {
               dir={textDirection}
               style={{
                 fontFamily:
-                  editorFontSettings.baseFontFamily === "system-sans"
-                    ? "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-                    : editorFontSettings.baseFontFamily === "serif"
-                      ? "ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif"
-                      : "ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace",
+                  editorFontSettings.baseFontFamily === "custom"
+                    ? fontFamilyStackFor(
+                        "custom",
+                        editorFontSettings.customFontFamily,
+                      )
+                    : editorFontSettings.baseFontFamily === "system-sans"
+                      ? "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+                      : editorFontSettings.baseFontFamily === "serif"
+                        ? "ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif"
+                        : "ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace",
                 fontSize: `${editorFontSettings.baseFontSize}px`,
               }}
             >
@@ -458,6 +488,101 @@ export function AppearanceSettingsSection() {
           <div className="absolute bottom-0 left-0 right-0 h-40 bg-linear-to-t from-bg to-transparent pointer-events-none" />
         </div>
       </section>
+    </div>
+  );
+}
+
+// Module-level cache so the OS fonts are only enumerated once per session
+let systemFontsCache: string[] | null = null;
+
+// Searchable list of installed OS fonts for the custom editor font.
+// Each row renders its own name in that font, doubling as a preview.
+function CustomFontPicker({
+  selected,
+  onSelect,
+}: {
+  selected: string;
+  onSelect: (family: string) => void;
+}) {
+  const [fonts, setFonts] = useState<string[] | null>(systemFontsCache);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+
+  const load = useCallback(async () => {
+    setError(null);
+    if (systemFontsCache) {
+      setFonts(systemFontsCache);
+      return;
+    }
+    try {
+      const families = await getSystemFonts();
+      systemFontsCache = families;
+      setFonts(families);
+    } catch (err) {
+      console.error("Failed to list system fonts:", err);
+      setError("Could not load system fonts.");
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const normalized = query.trim().toLowerCase();
+  const filtered =
+    fonts?.filter((f) => f.toLowerCase().includes(normalized)) ?? [];
+
+  return (
+    <div className="rounded-[10px] border border-border bg-bg-secondary p-2.5 space-y-2">
+      <div className="relative">
+        <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+        <Input
+          type="text"
+          placeholder="Search installed fonts..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="w-full h-9 pl-9"
+        />
+      </div>
+      {error ? (
+        <div className="flex items-center justify-between px-1 py-1">
+          <span className="text-sm text-text-muted">{error}</span>
+          <Button variant="outline" size="sm" onClick={load}>
+            Retry
+          </Button>
+        </div>
+      ) : fonts === null ? (
+        <div className="flex items-center gap-2 p-2">
+          <SpinnerIcon className="w-4 h-4 animate-spin text-text-muted" />
+          <span className="text-sm text-text-muted">
+            Loading installed fonts...
+          </span>
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className="text-sm text-text-muted p-2">
+          No fonts match "{query}"
+        </p>
+      ) : (
+        <div className="max-h-56 overflow-y-auto rounded-md border border-border divide-y divide-border">
+          {filtered.map((family) => (
+            <button
+              key={family}
+              type="button"
+              onClick={() => onSelect(family)}
+              className={cn(
+                "w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 hover:bg-bg-muted transition-colors cursor-pointer",
+                selected === family && "bg-bg-muted",
+              )}
+              style={{ fontFamily: fontFamilyStackFor("custom", family) }}
+            >
+              <span className="truncate">{family}</span>
+              {selected === family && (
+                <CheckIcon className="w-3.5 h-3.5 shrink-0 stroke-[2.2]" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

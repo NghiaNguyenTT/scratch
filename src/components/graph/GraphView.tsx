@@ -36,8 +36,8 @@ const FLOAT_ALPHA = 0.05;
 const DRAG_ALPHA = 0.3;
 
 function radiusFor(node: GNode, degree: Map<string, number>) {
-  if (node.unresolved) return 4;
-  return Math.min(4 + Math.sqrt(degree.get(node.id) ?? 0) * 2.4, 15);
+  if (node.unresolved) return 3;
+  return Math.min(3 + Math.sqrt(degree.get(node.id) ?? 0) * 1.5, 9);
 }
 
 function degreeMapOf(edges: LinkGraph["edges"]) {
@@ -74,7 +74,7 @@ function buildSimulation(nodes: GNode[], links: GEdge[], degree: Map<string, num
     .force("y", forceY(0).strength(0.05))
     .force(
       "collide",
-      forceCollide<GNode>().radius((d) => radiusFor(d, degree) + 6),
+      forceCollide<GNode>().radius((d) => radiusFor(d, degree) + 4),
     );
 }
 
@@ -538,7 +538,7 @@ export function GraphView({ onBack }: { onBack: () => void }) {
                     ) : (
                       <>
                         {isCurrent && (
-                          <circle r={r + 5} fill="var(--color-selection)" />
+                          <circle r={r + 4} fill="var(--color-selection)" />
                         )}
                         <circle
                           r={r}
@@ -550,7 +550,7 @@ export function GraphView({ onBack }: { onBack: () => void }) {
                       </>
                     )}
                     <text
-                      y={r + 11}
+                      y={r + 9}
                       textAnchor="middle"
                       fontSize={10}
                       fill={isCurrent ? "var(--color-text)" : "var(--color-text-muted)"}
