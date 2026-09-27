@@ -137,6 +137,26 @@ pub struct Settings {
     pub custom_colors_dark: Option<std::collections::HashMap<String, String>>,
 }
 
+// Wiki-link graph (for the graph view)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LinkGraphNode {
+    pub id: String,
+    pub title: String,
+    pub unresolved: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LinkGraphEdge {
+    pub source: String,
+    pub target: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LinkGraph {
+    pub nodes: Vec<LinkGraphNode>,
+    pub edges: Vec<LinkGraphEdge>,
+}
+
 // Search result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
@@ -484,6 +504,26 @@ fn extract_title(content: &str) -> String {
         }
     }
     "Untitled".to_string()
+}
+
+/// Extract `[[wikilink]]` targets from markdown content. Skips frontmatter,
+/// fenced code blocks (```/~~~) and inline code spans so example links aren't
+/// counted. Mirrors the TipTap tokenizer: titles containing `]` are unsupported.
+fn extract_wikilink_targets(content: &str) -> Vec<String> {
+    let body = strip_frontmatter(content);
+
+    let fence_re = regex::Regex::new(r"(?s)```.*?```|~~~.*?~~~").unwrap();
+    let no_fences = fence_re.replace_all(body, "");
+
+    let code_re = regex::Regex::new(r"`[^`\n]*`").unwrap();
+    let no_code = code_re.replace_all(&no_fences, "");
+
+    let link_re = regex::Regex::new(r"\[\[([^\]]+?)\]\]").unwrap();
+    link_re
+        .captures_iter(&no_code)
+        .map(|c| c[1].trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect()
 }
 
 // Utility: Generate preview from content (strip markdown formatting)
@@ -984,6 +1024,152 @@ async fn list_notes(state: State<'_, AppState>) -> Result<Vec<NoteMetadata>, Str
     }
 
     Ok(notes)
+}
+
+#[tauri::command]
+async fn get_link_graph(state: State<'_, AppState>) -> Result<LinkGraph, String> {
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config
+            .notes_folder
+            .clone()
+            .ok_or("Notes folder not set")?
+    };
+
+    let path = PathBuf::from(&folder);
+    if !path.exists() {
+        return Ok(LinkGraph {
+            nodes: vec![],
+            edges: vec![],
+        });
+    }
+
+    let ignored_dirs = {
+        let settings = state.settings.read().expect("settings read lock");
+        get_effective_ignored_dirs(&settings)
+    };
+
+    let path_clone = path.clone();
+    let discovered = tokio::task::spawn_blocking(move || {
+        use walkdir::WalkDir;
+        // (id, title, targets, modified) in the same walk order list_notes uses
+        let mut results: Vec<(String, String, Vec<String>, i64)> = Vec::new();
+        for entry in WalkDir::new(&path_clone)
+            .max_depth(10)
+            .into_iter()
+            .filter_entry(|e| is_visible_notes_entry(e, &ignored_dirs))
+            .flatten()
+        {
+            let file_path = entry.path();
+            if !file_path.is_file() {
+                continue;
+            }
+            if let Some(id) = id_from_abs_path(&path_clone, file_path, &ignored_dirs) {
+                if let Ok(content) = std::fs::read_to_string(file_path) {
+                    let modified = entry
+                        .metadata()
+                        .ok()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
+                    let title = extract_title(&content);
+                    let targets = extract_wikilink_targets(&content);
+                    results.push((id, title, targets, modified));
+                }
+            }
+        }
+        results
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Sort exactly like list_notes (pinned first, then newest) so that
+    // first-match title resolution matches the editor's click behavior
+    let pinned_ids: HashSet<String> = {
+        let settings = state.settings.read().expect("settings read lock");
+        settings
+            .pinned_note_ids
+            .as_ref()
+            .map(|ids| ids.iter().cloned().collect())
+            .unwrap_or_default()
+    };
+
+    let mut notes = discovered;
+    notes.sort_by(|a, b| {
+        let a_pinned = pinned_ids.contains(&a.0);
+        let b_pinned = pinned_ids.contains(&b.0);
+
+        match (a_pinned, b_pinned) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => b.3.cmp(&a.3),
+        }
+    });
+
+    // Case-insensitive title map; first match wins (same as the editor)
+    let mut title_to_id: HashMap<String, String> = HashMap::new();
+    for (id, title, _, _) in &notes {
+        title_to_id
+            .entry(title.to_lowercase())
+            .or_insert_with(|| id.clone());
+    }
+
+    // Every note is a node (orphans included; the view can hide them)
+    let mut nodes: Vec<LinkGraphNode> = notes
+        .iter()
+        .map(|(id, title, _, _)| LinkGraphNode {
+            id: id.clone(),
+            title: title.clone(),
+            unresolved: false,
+        })
+        .collect();
+
+    // Unresolved targets become faded nodes keyed by lowercased title so
+    // different casings of the same missing note share one node
+    let mut unresolved_nodes: Vec<LinkGraphNode> = Vec::new();
+    let mut unresolved_ids: HashMap<String, String> = HashMap::new();
+
+    let mut edges: Vec<LinkGraphEdge> = Vec::new();
+    let mut seen_edges: HashSet<(String, String)> = HashSet::new();
+
+    for (id, _, targets, _) in &notes {
+        for target in targets {
+            let target_id = match title_to_id.get(&target.to_lowercase()) {
+                Some(tid) => tid.clone(),
+                None => {
+                    let key = target.to_lowercase();
+                    let synth = unresolved_ids
+                        .entry(key.clone())
+                        .or_insert_with(|| format!("::unresolved::{}", key))
+                        .clone();
+                    if !unresolved_nodes.iter().any(|n| n.id == synth) {
+                        unresolved_nodes.push(LinkGraphNode {
+                            id: synth.clone(),
+                            title: target.clone(),
+                            unresolved: true,
+                        });
+                    }
+                    synth
+                }
+            };
+
+            // Skip self-links and duplicate edges
+            if &target_id == id {
+                continue;
+            }
+            if seen_edges.insert((id.clone(), target_id.clone())) {
+                edges.push(LinkGraphEdge {
+                    source: id.clone(),
+                    target: target_id,
+                });
+            }
+        }
+    }
+
+    nodes.extend(unresolved_nodes);
+
+    Ok(LinkGraph { nodes, edges })
 }
 
 #[tauri::command]
@@ -3841,6 +4027,7 @@ pub fn run() {
             get_notes_folder,
             set_notes_folder,
             list_notes,
+            get_link_graph,
             read_note,
             save_note,
             delete_note,

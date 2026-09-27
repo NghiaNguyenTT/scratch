@@ -16,6 +16,7 @@ export const shortcutCategories: ShortcutCategory[] = [
     shortcuts: [
       { keys: [mod, "P"], description: "Command palette" },
       { keys: [mod, shift, "F"], description: "Search notes" },
+      { keys: [mod, shift, "G"], description: "Graph view" },
       { keys: [mod, "\\"], description: "Toggle sidebar" },
       { keys: [mod, ","], description: "Settings" },
       { keys: [mod, "/"], description: "Keyboard shortcuts" },

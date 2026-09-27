@@ -12,6 +12,7 @@ import { Editor } from "./components/editor/Editor";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import { FolderPicker } from "./components/layout/FolderPicker";
 import { CommandPalette } from "./components/command-palette/CommandPalette";
+import { GraphView } from "./components/graph/GraphView";
 import { SettingsPage } from "./components/settings";
 import {
   SpinnerIcon,
@@ -47,7 +48,7 @@ function getWindowMode(): {
   };
 }
 
-type ViewState = "notes" | "settings";
+type ViewState = "notes" | "settings" | "graph";
 
 function AppContent() {
   const {
@@ -119,6 +120,10 @@ function AppContent() {
 
   const closeSettings = useCallback(() => {
     setView("notes");
+  }, []);
+
+  const openGraphView = useCallback(() => {
+    setView("graph");
   }, []);
 
   // Go back to command palette from AI modal
@@ -239,8 +244,26 @@ function AppContent() {
         return;
       }
 
-      // Block all other shortcuts when in settings view
-      if (view === "settings") {
+      // Cmd+Shift+G - Toggle graph view
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "g"
+      ) {
+        e.preventDefault();
+        setView((prev) => (prev === "graph" ? "notes" : "graph"));
+        return;
+      }
+
+      // Escape closes the graph view
+      if (e.key === "Escape" && view === "graph") {
+        e.preventDefault();
+        setView("notes");
+        return;
+      }
+
+      // Block all other shortcuts when in settings or graph view
+      if (view !== "notes") {
         return;
       }
 
@@ -471,6 +494,8 @@ function AppContent() {
       <div className="h-full min-h-0 flex bg-bg text-text overflow-hidden">
         {view === "settings" ? (
           <SettingsPage onBack={closeSettings} />
+        ) : view === "graph" ? (
+          <GraphView onBack={() => setView("notes")} />
         ) : (
           <>
             <div
@@ -513,6 +538,7 @@ function AppContent() {
         open={paletteOpen}
         onClose={handleClosePalette}
         onOpenSettings={toggleSettings}
+        onOpenGraphView={openGraphView}
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenAiModal={(provider) => {
           setAiProvider(provider);

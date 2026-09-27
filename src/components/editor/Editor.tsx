@@ -38,24 +38,9 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { join } from "@tauri-apps/api/path";
 import { toast } from "sonner";
 import { mod, alt, shift, isMac, isWindows } from "../../lib/platform";
-
-// Prepend https:// if no protocol is present
-function normalizeUrl(url: string): string {
-  const trimmed = url.trim();
-  if (!trimmed) return trimmed;
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
-}
-
-// Validate URL scheme for safe opening
-function isAllowedUrlScheme(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return ["http:", "https:", "mailto:"].includes(parsed.protocol);
-  } catch {
-    return false;
-  }
-}
+import { isAllowedUrlScheme, normalizeUrl } from "../../lib/urls";
+import { resolveNoteByTitle } from "../../lib/wikilinks";
+import { WikilinkPreviewHost } from "./WikilinkPreview";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { useOptionalNotes } from "../../context/NotesContext";
@@ -68,7 +53,7 @@ import { SlashCommand } from "./SlashCommand";
 import { Wikilink, type WikilinkStorage } from "./Wikilink";
 import { WikilinkSuggestion } from "./WikilinkSuggestion";
 import { EditorWidthHandles } from "./EditorWidthHandle";
-import { ScratchBlockMath, normalizeBlockMath } from "./MathExtensions";
+import { ScratchBlockMath, normalizeBlockMath, katexMacros } from "./MathExtensions";
 import { cn } from "../../lib/utils";
 import { plainTextFromMarkdown } from "../../lib/plainText";
 import { Button, IconButton, ToolbarButton, Tooltip } from "../ui";
@@ -146,15 +131,6 @@ function focusAndSelectTitle(editor: TiptapEditor): boolean {
 
   return true;
 }
-
-// Standard number-field shortcuts for KaTeX (shared between inline and block math)
-const katexMacros: Record<string, string> = {
-  "\\R": "\\mathbb{R}",
-  "\\N": "\\mathbb{N}",
-  "\\Z": "\\mathbb{Z}",
-  "\\Q": "\\mathbb{Q}",
-  "\\C": "\\mathbb{C}",
-};
 
 // Search highlight extension - adds yellow backgrounds to search matches
 const searchHighlightPluginKey = new PluginKey("searchHighlight");
@@ -1397,9 +1373,7 @@ export function Editor({
         const noteTitle = wikilinkEl.getAttribute("data-note-title");
         const currentNotes = notesRef.current;
         if (noteTitle && currentNotes) {
-          const note = currentNotes.find(
-            (n) => n.title.toLowerCase() === noteTitle.toLowerCase(),
-          );
+          const note = resolveNoteByTitle(noteTitle, currentNotes);
           if (note) {
             notesCtxRef.current?.selectNote(note.id);
           } else {
@@ -2690,6 +2664,7 @@ export function Editor({
                 }}
               >
                 <EditorContent editor={editor} className="h-full text-text" />
+                <WikilinkPreviewHost editor={editor} />
               </div>
             </>
           )}

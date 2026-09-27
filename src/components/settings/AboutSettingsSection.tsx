@@ -97,7 +97,7 @@ export function AboutSettingsSection() {
         </p>
         <div className="flex items-center gap-1">
           <Button
-            onClick={() => handleOpenUrl("https://github.com/erictli/scratch")}
+            onClick={() => handleOpenUrl("https://github.com/NghiaNguyenTT/scratch")}
             variant="outline"
             size="md"
             className="gap-1.25"
@@ -107,7 +107,7 @@ export function AboutSettingsSection() {
           </Button>
           <Button
             onClick={() =>
-              handleOpenUrl("https://github.com/erictli/scratch/issues")
+              handleOpenUrl("https://github.com/NghiaNguyenTT/scratch/issues")
             }
             variant="ghost"
             size="md"

@@ -50,6 +50,7 @@ import {
   FolderIcon,
   FolderPlusIcon,
   KeyboardIcon,
+  GraphIcon,
 } from "../icons";
 import { mod, shift } from "../../lib/platform";
 import type { AiProvider } from "../../services/ai";
@@ -66,6 +67,7 @@ interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
   onOpenSettings?: () => void;
+  onOpenGraphView?: () => void;
   onOpenShortcuts?: () => void;
   onOpenAiModal?: (provider: AiProvider) => void;
   focusMode?: boolean;
@@ -77,6 +79,7 @@ export function CommandPalette({
   open,
   onClose,
   onOpenSettings,
+  onOpenGraphView,
   onOpenShortcuts,
   onOpenAiModal,
   focusMode,
@@ -453,6 +456,16 @@ export function CommandPalette({
     // Keyboard shortcuts, settings, and theme commands at the bottom
     baseCommands.push(
       {
+        id: "open-graph-view",
+        label: "Open Graph View",
+        shortcut: `${mod} ${shift} G`,
+        icon: <GraphIcon className="w-4.5 h-4.5 stroke-[1.5]" />,
+        action: () => {
+          onOpenGraphView?.();
+          onClose();
+        },
+      },
+      {
         id: "keyboard-shortcuts",
         label: "Keyboard Shortcuts",
         shortcut: `${mod} /`,
@@ -508,6 +521,7 @@ export function CommandPalette({
     deleteNote,
     onClose,
     onOpenSettings,
+    onOpenGraphView,
     onOpenAiModal,
     availableAiProviders,
     setTheme,

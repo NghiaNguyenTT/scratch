@@ -2,6 +2,15 @@ import { InputRule } from "@tiptap/core";
 import { BlockMath } from "@tiptap/extension-mathematics";
 import { Plugin, PluginKey, NodeSelection } from "@tiptap/pm/state";
 
+// Standard number-field shortcuts for KaTeX (shared between inline and block math)
+export const katexMacros: Record<string, string> = {
+  "\\R": "\\mathbb{R}",
+  "\\N": "\\mathbb{N}",
+  "\\Z": "\\mathbb{Z}",
+  "\\Q": "\\mathbb{Q}",
+  "\\C": "\\mathbb{C}",
+};
+
 export function normalizeBlockMath(value: string): string {
   const trimmed = value.trim();
   const match = trimmed.match(/^\$\$([\s\S]*?)\$\$$/);
