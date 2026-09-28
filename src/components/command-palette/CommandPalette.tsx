@@ -70,6 +70,7 @@ interface CommandPaletteProps {
   onOpenGraphView?: () => void;
   onOpenShortcuts?: () => void;
   onOpenAiModal?: (provider: AiProvider) => void;
+  onExportPdf?: () => void;
   focusMode?: boolean;
   onToggleFocusMode?: () => void;
   editorRef?: React.RefObject<Editor | null>;
@@ -82,6 +83,7 @@ export function CommandPalette({
   onOpenGraphView,
   onOpenShortcuts,
   onOpenAiModal,
+  onExportPdf,
   focusMode,
   onToggleFocusMode,
   editorRef,
@@ -316,6 +318,19 @@ export function CommandPalette({
           },
         },
         {
+          id: "export-pdf",
+          label: "Export as PDF…",
+          icon: <DownloadIcon className="w-4.5 h-4.5 stroke-[1.5]" />,
+          action: async () => {
+            if (!onExportPdf) {
+              toast.error("Export not available");
+              return;
+            }
+            onClose();
+            onExportPdf();
+          },
+        },
+        {
           id: "download-pdf",
           label: "Print as PDF",
           icon: <DownloadIcon className="w-4.5 h-4.5 stroke-[1.5]" />,
@@ -540,6 +555,7 @@ export function CommandPalette({
     onToggleFocusMode,
     notesFolder,
     onOpenShortcuts,
+    onExportPdf,
   ]);
 
   // Debounced search using Tantivy (local state, doesn't affect sidebar)

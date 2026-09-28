@@ -2372,6 +2372,13 @@ export function Editor({
                 <DropdownMenu.Separator className="h-px bg-border my-1" />
                 <DropdownMenu.Item
                   className="px-3 py-1.5 text-sm text-text cursor-pointer outline-none hover:bg-bg-muted focus:bg-bg-muted flex items-center gap-2"
+                  onSelect={() => window.dispatchEvent(new CustomEvent("export-pdf"))}
+                >
+                  <DownloadIcon className="w-4 h-4 stroke-[1.6]" />
+                  Export as PDF…
+                </DropdownMenu.Item>
+                <DropdownMenu.Item
+                  className="px-3 py-1.5 text-sm text-text cursor-pointer outline-none hover:bg-bg-muted focus:bg-bg-muted flex items-center gap-2"
                   onSelect={handleDownloadPdf}
                 >
                   <DownloadIcon className="w-4 h-4 stroke-[1.6]" />

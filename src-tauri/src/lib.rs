@@ -17,6 +17,7 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
 mod git;
+pub mod pdf_export;
 
 // Note metadata for list display
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,6 +137,8 @@ pub struct Settings {
     pub custom_colors_light: Option<std::collections::HashMap<String, String>>,
     #[serde(rename = "customColorsDark")]
     pub custom_colors_dark: Option<std::collections::HashMap<String, String>>,
+    #[serde(rename = "pdfExport")]
+    pub pdf_export: Option<pdf_export::PdfExportOptions>,
 }
 
 // Wiki-link graph (for the graph view)
@@ -4207,6 +4210,7 @@ pub fn run() {
             ai_execute_opencode,
             ai_execute_ollama,
             read_file_direct,
+            pdf_export::export_note_pdf,
             save_file_direct,
             import_file_to_folder,
             open_file_preview,

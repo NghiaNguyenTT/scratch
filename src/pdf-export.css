@@ -1,0 +1,140 @@
+/* PDF export page (hidden pdf-* webview).
+   The page itself is never screen-printed via window.print(); the Rust side
+   renders it with WebView2's PrintToPdf, which applies these print rules.
+   NOTE: no @page rule here on purpose — a CSS @page margin would override
+   the margins configured through ICoreWebView2PrintSettings. */
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* The shared App.css pins html/body/#root to height:100% + overflow:hidden so
+   the app shell fills its window. In the export window that clips the print
+   layout to a single page — let the document flow freely instead. */
+html,
+body,
+#root {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.pdf-root {
+  padding: 24px;
+}
+
+.pdf-page {
+  max-width: 650px; /* ≈ A4 width minus normal margins at 96 dpi */
+  margin: 0 auto;
+}
+
+.pdf-content {
+  font-family: var(--editor-font-family);
+  font-size: var(--editor-base-font-size);
+}
+
+/* Everything the print engine produces must keep the app's colors and fonts —
+   this is what makes dark-mode PDFs and tinted code blocks survive printing. */
+@media print {
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .pdf-root {
+    padding: 0 !important;
+  }
+
+  .pdf-page,
+  .pdf-content,
+  .ProseMirror {
+    max-width: none !important;
+    width: 100% !important;
+  }
+
+  /* Pagination quality rules */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    break-after: avoid;
+    break-inside: avoid;
+  }
+
+  /* Overflow containers are monolithic in print: Chromium slices them at page
+     boundaries instead of fragmenting. The editor styles tables and code
+     blocks with overflow-x:auto for horizontal scrolling — undo that so they
+     break across pages properly. */
+  .tableWrapper,
+  .prose table,
+  table.not-prose,
+  pre,
+  .code-block-wrapper,
+  .code-block-wrapper pre,
+  figure,
+  blockquote {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Restore real table layout for pagination: break between rows, repeat the
+     header, keep cells atomic. (The editor uses display:block + max-content
+     for its scrollable tables.) */
+  .prose table,
+  table.not-prose,
+  .tableWrapper table,
+  table {
+    display: table !important;
+    width: 100% !important;
+    table-layout: fixed !important;
+    max-width: 100% !important;
+  }
+
+  tr,
+  td,
+  th {
+    break-inside: avoid;
+    overflow-wrap: break-word;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  /* Code block chrome is editor-only UI — never print it */
+  .code-block-language-selector,
+  .code-block-mermaid-btn,
+  .code-copy-button {
+    display: none !important;
+  }
+
+  /* Images must move to the next page whole, never slice */
+  img,
+  svg {
+    max-width: 100% !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  p:has(> img:only-child) {
+    break-inside: avoid;
+  }
+
+  p {
+    orphans: 3;
+    widows: 3;
+  }
+
+  /* Wikilinks have no target inside a PDF — render as accent-colored text */
+  span[data-wikilink],
+  a[data-wikilink] {
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+}

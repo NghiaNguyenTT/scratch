@@ -45,6 +45,28 @@ export type ThemeColorKey =
 export type CustomColors = Partial<Record<ThemeColorKey, string>>;
 
 // Per-folder settings (stored in .scratch/settings.json)
+export interface PdfBookmark {
+  level: number; // 1..=6 (h1..h6)
+  text: string;
+}
+
+export interface PdfExportOptions {
+  paper: "a4" | "letter";
+  orientation: "portrait" | "landscape";
+  margins: "narrow" | "normal" | "wide";
+  includeFrontmatter: boolean;
+  pageNumbers: boolean;
+  fontSize?: number;
+}
+
+export const DEFAULT_PDF_EXPORT_OPTIONS: PdfExportOptions = {
+  paper: "a4",
+  orientation: "portrait",
+  margins: "normal",
+  includeFrontmatter: false,
+  pageNumbers: false,
+};
+
 export interface Settings {
   theme: ThemeSettings;
   editorFont?: EditorFontSettings;
@@ -61,6 +83,7 @@ export interface Settings {
   ignoredPatterns?: string[];
   customColorsLight?: CustomColors;
   customColorsDark?: CustomColors;
+  pdfExport?: PdfExportOptions;
 }
 
 export interface FolderNode {

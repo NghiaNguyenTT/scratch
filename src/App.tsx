@@ -23,8 +23,10 @@ import {
 } from "./components/icons";
 import { AiEditModal } from "./components/ai/AiEditModal";
 import { AiResponseToast } from "./components/ai/AiResponseToast";
+import { ExportPdfModal } from "./components/export/ExportPdfModal";
 import { KeyboardShortcutsModal } from "./components/shortcuts/KeyboardShortcutsModal";
 import { PreviewApp } from "./components/preview/PreviewApp";
+import "./app-print.css";
 import {
   check as checkForUpdate,
   type Update,
@@ -75,6 +77,7 @@ function AppContent() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [exportPdfOpen, setExportPdfOpen] = useState(false);
   const [aiEditing, setAiEditing] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [aiProvider, setAiProvider] = useState<AiProvider>("claude");
@@ -113,6 +116,15 @@ function AppContent() {
       return !prev;
     });
   }, [selectedNoteId]);
+
+  // Export as PDF from the editor toolbar's Export dropdown
+  useEffect(() => {
+    const handler = () => {
+      if (currentNoteRef.current) setExportPdfOpen(true);
+    };
+    window.addEventListener("export-pdf", handler);
+    return () => window.removeEventListener("export-pdf", handler);
+  }, []);
 
   const toggleSettings = useCallback(() => {
     setView((prev) => (prev === "settings" ? "notes" : "settings"));
@@ -311,10 +323,14 @@ function AppContent() {
         return;
       }
 
-      // Cmd+Shift+P - Print
+      // Cmd+Shift+P - Export as PDF
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "p") {
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent("print-note"));
+        if (currentNoteRef.current) {
+          setExportPdfOpen(true);
+        } else {
+          window.dispatchEvent(new CustomEvent("print-note"));
+        }
         return;
       }
 
@@ -544,6 +560,7 @@ function AppContent() {
           setAiProvider(provider);
           setAiModalOpen(true);
         }}
+        onExportPdf={() => setExportPdfOpen(true)}
         focusMode={focusMode}
         onToggleFocusMode={toggleFocusMode}
         editorRef={editorRef}
@@ -554,6 +571,12 @@ function AppContent() {
         onBack={handleBackToPalette}
         onExecute={handleAiEdit}
         isExecuting={aiEditing}
+      />
+      <ExportPdfModal
+        open={exportPdfOpen && !!currentNote}
+        onClose={() => setExportPdfOpen(false)}
+        filePath={currentNote?.path ?? ""}
+        noteTitle={currentNote?.title ?? "note"}
       />
 
       {/* AI Editing Overlay */}

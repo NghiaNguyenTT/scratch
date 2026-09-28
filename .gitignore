@@ -30,5 +30,8 @@ src-tauri/gen/
 # Build secrets
 .env.build
 
+# Agent workspace config
+.zcode/
+
 # Release artifacts
 latest.json

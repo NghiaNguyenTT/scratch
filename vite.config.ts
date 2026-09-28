@@ -42,6 +42,11 @@ export default defineConfig(async () => ({
     minify: "esbuild",
     // Optimize chunk splitting
     rollupOptions: {
+      // Two entries: the main app and the hidden PDF export window
+      input: {
+        main: "index.html",
+        pdf: "pdf.html",
+      },
       output: {
         // Manual chunk splitting for better caching
         manualChunks: {

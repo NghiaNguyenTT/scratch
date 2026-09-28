@@ -94,6 +94,14 @@ export function PreviewApp({ filePath }: PreviewAppProps) {
     };
   }, []);
 
+  // "Export as PDF…" from the toolbar falls back to the print dialog here —
+  // direct WebView2 export is wired in the main window only.
+  useEffect(() => {
+    const handler = () => window.print();
+    window.addEventListener("export-pdf", handler);
+    return () => window.removeEventListener("export-pdf", handler);
+  }, []);
+
   // Keyboard shortcuts for preview mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
