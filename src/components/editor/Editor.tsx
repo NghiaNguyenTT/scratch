@@ -86,6 +86,8 @@ import {
   DownloadIcon,
   ShareIcon,
   PanelLeftIcon,
+  PanelTopCloseIcon,
+  PanelTopOpenIcon,
   RefreshCwIcon,
   PinIcon,
   SearchIcon,
@@ -522,7 +524,7 @@ export function Editor({
   const pinNote = notesCtx?.pinNote;
   const unpinNote = notesCtx?.unpinNote;
   const notes = notesCtx?.notes;
-  const { textDirection } = useTheme();
+  const { textDirection, toolbarHidden, setToolbarHidden } = useTheme();
   const [isSaving, setIsSaving] = useState(false);
   // Force re-render when selection changes to update toolbar active states
   const [, setSelectionKey] = useState(0);
@@ -2234,10 +2236,6 @@ export function Editor({
           <span className="text-xs text-text-muted mb-px truncate">
             {formatDateTime(currentNote.modified)}
           </span>
-        </div>
-        <div
-          className={`titlebar-no-drag flex items-center gap-px shrink-0 transition-opacity duration-400 ${needsSidebarDelay ? "delay-200" : ""} ${focusMode ? "opacity-0 pointer-events-none" : "opacity-100"}`}
-        >
           {hasExternalChanges ? (
             <Tooltip
               content={`External changes detected (${mod}${isMac ? "" : "+"}R to refresh)`}
@@ -2263,6 +2261,21 @@ export function Editor({
               </div>
             </Tooltip>
           )}
+        </div>
+        <div
+          className={`titlebar-no-drag flex items-center gap-px shrink-0 transition-opacity duration-400 ${needsSidebarDelay ? "delay-200" : ""} ${focusMode ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+        >
+          <IconButton
+            onClick={() => setToolbarHidden(!toolbarHidden)}
+            title={toolbarHidden ? "Show toolbar" : "Hide toolbar"}
+            className="shrink-0"
+          >
+            {toolbarHidden ? (
+              <PanelTopOpenIcon className="w-4.5 h-4.5 stroke-[1.5]" />
+            ) : (
+              <PanelTopCloseIcon className="w-4.5 h-4.5 stroke-[1.5]" />
+            )}
+          </IconButton>
           {currentNote && pinNote && unpinNote && (
             <Tooltip content={isPinned ? "Unpin note" : "Pin note"}>
               <IconButton
@@ -2412,10 +2425,11 @@ export function Editor({
         </div>
       </div>
 
-      {/* Format Bar – transition only after initial mount to avoid height animation on note load */}
+      {/* Format Bar – hidden via the header toggle, focus or source mode;
+          transition only after initial mount to avoid height animation on note load */}
       <div
         data-format-bar
-        className={`${focusMode || sourceMode ? "opacity-0 max-h-0 overflow-hidden pointer-events-none" : "opacity-100 max-h-20"} ${hasTransitioned ? `transition-all duration-400 ${needsSidebarDelay ? "delay-200" : ""}` : ""}`}
+        className={`${focusMode || sourceMode || toolbarHidden ? "opacity-0 max-h-0 overflow-hidden pointer-events-none" : "opacity-100 max-h-20"} ${hasTransitioned ? `transition-all duration-400 ${needsSidebarDelay ? "delay-200" : ""}` : ""}`}
       >
         <FormatBar
           editor={editor}

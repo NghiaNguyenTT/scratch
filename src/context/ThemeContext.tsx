@@ -136,6 +136,8 @@ interface ThemeContextType {
   sidebarWidthPx: number | null;
   setSidebarWidthPx: (px: number | null) => void;
   setSidebarWidthLive: (px: number) => void;
+  toolbarHidden: boolean;
+  setToolbarHidden: (hidden: boolean) => void;
   customColorsLight: CustomColors;
   customColorsDark: CustomColors;
   setCustomColor: (mode: "light" | "dark", key: ThemeColorKey, value: string) => void;
@@ -215,6 +217,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     DEFAULT_CUSTOM_WIDTH_PX
   );
   const [sidebarWidthPx, setSidebarWidthPxState] = useState<number | null>(null);
+  const [toolbarHidden, setToolbarHiddenState] = useState(false);
   const [customColorsLight, setCustomColorsLightState] = useState<CustomColors>({});
   const [customColorsDark, setCustomColorsDarkState] = useState<CustomColors>({});
   const [isInitialized, setIsInitialized] = useState(false);
@@ -276,6 +279,9 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         settings.sidebarWidthPx <= SIDEBAR_MAX_PX
       ) {
         setSidebarWidthPxState(settings.sidebarWidthPx);
+      }
+      if (settings.toolbarHidden === true) {
+        setToolbarHiddenState(true);
       }
       if (settings.customColorsLight) {
         setCustomColorsLightState(settings.customColorsLight);
@@ -462,6 +468,17 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       await updateSettings({ ...settings, editorWidth: width });
     } catch (error) {
       console.error("Failed to save editor width:", error);
+    }
+  }, []);
+
+  // Save and set editor toolbar visibility
+  const setToolbarHidden = useCallback(async (hidden: boolean) => {
+    setToolbarHiddenState(hidden);
+    try {
+      const settings = await getSettings();
+      await updateSettings({ ...settings, toolbarHidden: hidden });
+    } catch (error) {
+      console.error("Failed to save toolbar visibility:", error);
     }
   }, []);
 
@@ -653,6 +670,8 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         sidebarWidthPx,
         setSidebarWidthPx,
         setSidebarWidthLive,
+        toolbarHidden,
+        setToolbarHidden,
         customColorsLight,
         customColorsDark,
         setCustomColor,

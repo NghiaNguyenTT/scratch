@@ -113,7 +113,12 @@ export function ExportPdfApp({
           // PDF outline entries (bookmarks). No anchor, no bookmark.
           const anchor = document.createElement("a");
           anchor.setAttribute("href", `#bmk-${i}`);
-          anchor.setAttribute("style", "color:inherit;text-decoration:none");
+          // Inline style neutralizes .prose a's border-bottom (it paints
+          // like an underline in print) and its font-weight bump.
+          anchor.setAttribute(
+            "style",
+            "color:inherit;text-decoration:none;border-bottom:none;font-weight:inherit",
+          );
           anchor.innerHTML = el.innerHTML;
           el.innerHTML = "";
           el.appendChild(anchor);

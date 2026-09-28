@@ -127,6 +127,9 @@ pub struct Settings {
     /// Custom sidebar width in px; `None` means the default width is used.
     #[serde(rename = "sidebarWidthPx")]
     pub sidebar_width_px: Option<u32>,
+    /// Whether the editor format toolbar row is hidden.
+    #[serde(rename = "toolbarHidden")]
+    pub toolbar_hidden: Option<bool>,
     #[serde(rename = "ollamaModel")]
     pub ollama_model: Option<String>,
     #[serde(rename = "foldersEnabled")]

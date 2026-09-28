@@ -77,6 +77,7 @@ export interface Settings {
   editorWidth?: EditorWidth;
   customEditorWidthPx?: number;
   sidebarWidthPx?: number;
+  toolbarHidden?: boolean;
   defaultNoteName?: string;
   interfaceZoom?: number;
   ollamaModel?: string;
