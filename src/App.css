@@ -320,7 +320,11 @@ html.dark {
 .prose {
   font-family: var(--editor-font-family);
   font-size: var(--editor-base-font-size);
-  font-weight: 400;
+  /* 430 instead of 400: Chromium on Windows renders grayscale AA without
+     macOS's stroke thickening, so 400 reads thin. Variable fonts (Segoe UI
+     Variable, Inter Variable) render a true 430; static fonts round back
+     to 400. */
+  font-weight: 430;
   line-height: var(--editor-line-height);
   color: var(--color-text);
 }

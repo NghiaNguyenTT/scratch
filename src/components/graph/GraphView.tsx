@@ -1,236 +1,313 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  forceCollide,
-  forceLink,
-  forceManyBody,
-  forceSimulation,
-  forceX,
-  forceY,
-  type Simulation,
-  type SimulationLinkDatum,
-  type SimulationNodeDatum,
-} from "d3-force";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Graph, LinkStyle } from "@cosmos.gl/graph";
+import { LabelRenderer } from "@cosmograph/vis-labels";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
 import { useNotes } from "../../context/NotesContext";
+import { useTheme } from "../../context/ThemeContext";
 import { getLinkGraph, type LinkGraph } from "../../services/graph";
 import { ArrowLeftIcon, MinusIcon, PlusIcon } from "../icons";
 import { IconButton } from "../ui";
 import { isWindows } from "../../lib/platform";
 
-type GNode = LinkGraph["nodes"][number] & SimulationNodeDatum;
-type GEdge = LinkGraph["edges"][number] & SimulationLinkDatum<GNode>;
+type GNode = LinkGraph["nodes"][number];
 
-interface Transform {
-  tx: number;
-  ty: number;
-  k: number;
+// Labels are screen-space HTML (never scale with zoom), so they are capped in
+// characters like the SVG version was.
+const MAX_LABEL_CHARS = 28;
+
+// Reading a CSS custom property can yield any CSS color format (oklch, hex,
+// rgb…). Painting it on a 1x1 canvas and sampling the pixel converts it to
+// RGBA components no matter the format.
+const colorCanvas = document.createElement("canvas");
+colorCanvas.width = 1;
+colorCanvas.height = 1;
+const colorCtx = colorCanvas.getContext("2d", { willReadFrequently: true })!;
+
+function cssColorToRgba(
+  value: string,
+  fallback: string,
+  alpha = 1,
+): [number, number, number, number] {
+  colorCtx.clearRect(0, 0, 1, 1);
+  colorCtx.fillStyle = value.trim() || fallback;
+  colorCtx.fillRect(0, 0, 1, 1);
+  const [r, g, b, a] = colorCtx.getImageData(0, 0, 1, 1).data;
+  return [r / 255, g / 255, b / 255, (a / 255) * alpha];
 }
 
-const MIN_K = 0.05;
-const MAX_K = 3;
-// Vaults larger than this skip the live simulation and lay out instantly
-const LIVE_SIM_MAX_NODES = 600;
-// Perpetual low simmer so nodes float gently instead of freezing solid
-const FLOAT_ALPHA = 0.05;
-const DRAG_ALPHA = 0.3;
-
-function radiusFor(node: GNode, degree: Map<string, number>) {
-  if (node.unresolved) return 3;
-  return Math.min(3 + Math.sqrt(degree.get(node.id) ?? 0) * 1.5, 9);
+function readCssColor(name: string, fallback: string, alpha = 1) {
+  return cssColorToRgba(
+    getComputedStyle(document.documentElement).getPropertyValue(name),
+    fallback,
+    alpha,
+  );
 }
 
-function degreeMapOf(edges: LinkGraph["edges"]) {
-  const degree = new Map<string, number>();
-  for (const e of edges) {
-    degree.set(e.source, (degree.get(e.source) ?? 0) + 1);
-    degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
-  }
-  return degree;
+function sizeFor(node: GNode, degree: Map<string, number>) {
+  if (node.unresolved) return 2.5;
+  return Math.min(2.5 + Math.sqrt(degree.get(node.id) ?? 0) * 1.3, 9);
 }
 
-function prepareGraph(
-  data: LinkGraph,
-  prevPositions: Map<string, { x: number; y: number }>,
-): { nodes: GNode[]; links: GEdge[] } {
-  const nodes: GNode[] = data.nodes.map((n) => {
-    const prev = prevPositions.get(n.id);
-    return { ...n, x: prev?.x, y: prev?.y };
-  });
-  const links: GEdge[] = data.edges.map((e) => ({ ...e }));
-  return { nodes, links };
-}
-
-function buildSimulation(nodes: GNode[], links: GEdge[], degree: Map<string, number>) {
-  return forceSimulation<GNode>(nodes)
-    .force(
-      "link",
-      forceLink<GNode, GEdge>(links).id((d) => d.id).distance(60).strength(0.6),
-    )
-    .force("charge", forceManyBody<GNode>().strength(-120))
-    // Weak gravity keeps orphan notes near the connected cluster instead of
-    // being flung to the edges by the charge force
-    .force("x", forceX(0).strength(0.05))
-    .force("y", forceY(0).strength(0.05))
-    .force(
-      "collide",
-      forceCollide<GNode>().radius((d) => radiusFor(d, degree) + 4),
-    );
+function truncateTitle(title: string) {
+  return title.length > MAX_LABEL_CHARS ? `${title.slice(0, MAX_LABEL_CHARS)}…` : title;
 }
 
 export function GraphView({ onBack }: { onBack: () => void }) {
   const { selectNote, selectedNoteId } = useNotes();
-  const containerRef = useRef<HTMLDivElement>(null);
+  const { resolvedTheme } = useTheme();
+
+  const canvasHostRef = useRef<HTMLDivElement>(null);
+  const labelsHostRef = useRef<HTMLDivElement>(null);
+  const graphRef = useRef<Graph | null>(null);
+  const labelsRef = useRef<LabelRenderer | null>(null);
+
+  // Mutable mirrors for stable callbacks (the Graph instance is created once
+  // and updated in place, so its callbacks must read state through refs)
+  const nodesRef = useRef<GNode[]>([]);
+  const rawDataRef = useRef<LinkGraph | null>(null);
+  const selectedNoteIdRef = useRef<string | null>(selectedNoteId);
+  selectedNoteIdRef.current = selectedNoteId;
+  const hideOrphansRef = useRef(false);
+  const labelsDirtyRef = useRef(false);
+  // Last known simulation-space position per node id, refreshed from the
+  // live instance before every data rebuild
   const prevPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
-  const firstLoadDone = useRef(false);
-  const simRef = useRef<Simulation<GNode, GEdge> | null>(null);
-  // Mirror of the graph state for use inside stable callbacks (avoids
-  // re-subscribing the fetch/file-change effects on every render)
-  const graphRef = useRef<{ nodes: GNode[]; links: GEdge[] } | null>(null);
-  const interaction = useRef<
-    | { type: "pan"; startX: number; startY: number; startTx: number; startTy: number }
-    | { type: "drag"; nodeId: string; dx: number; dy: number; moved: boolean }
-    | null
-  >(null);
-  const suppressClickRef = useRef(false);
+  // Link indices touching each node id, for hover highlighting. The library's
+  // getConnectedLinkIndices only returns links whose BOTH endpoints are in the
+  // given set — for a single hovered node that is always empty.
+  const linksByNodeIdRef = useRef<Map<string, number[]>>(new Map());
+  // One extra fit once the entrance simulation has settled — fitting too
+  // early captures the wide scatter, then gravity contracts the cluster
+  const fitOnSettleRef = useRef(true);
 
-  const [graph, setGraph] = useState<{ nodes: GNode[]; links: GEdge[] } | null>(null);
-  graphRef.current = graph;
+  const [counts, setCounts] = useState<{ notes: number; links: number } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [transform, setTransform] = useState<Transform>({ tx: 0, ty: 0, k: 1 });
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [hideOrphans, setHideOrphans] = useState(false);
-  // Node positions are mutated in place (d3 ticks, drags); bumping this
-  // version forces the SVG to re-render with the updated coordinates
-  const [renderVersion, setRenderVersion] = useState(0);
 
-  const degreeById = useMemo(() => {
-    const degree = new Map<string, number>();
-    if (graph) {
-      for (const e of graph.links) {
-        const s = e.source as GNode;
-        const t = e.target as GNode;
-        degree.set(s.id, (degree.get(s.id) ?? 0) + 1);
-        degree.set(t.id, (degree.get(t.id) ?? 0) + 1);
+  // ---- interaction callbacks (defined before applyData uses them) ----
+
+  const handlePointClick = useCallback(
+    (index?: number) => {
+      if (index == null) return;
+      const node = nodesRef.current[index];
+      if (!node) return;
+      if (node.unresolved) {
+        toast.info(`Note "${node.title}" does not exist yet`);
+        return;
       }
-    }
-    return degree;
-  }, [graph]);
+      void selectNote(node.id).then(() => onBack());
+    },
+    [selectNote, onBack],
+  );
 
-  const neighborIds = useMemo(() => {
-    if (!hoveredId || !graph) return null;
-    const set = new Set<string>([hoveredId]);
-    for (const e of graph.links) {
-      const s = e.source as GNode;
-      const t = e.target as GNode;
-      if (s.id === hoveredId) set.add(t.id);
-      if (t.id === hoveredId) set.add(s.id);
+  const handleHover = useCallback((index: number | null) => {
+    const g = graphRef.current;
+    if (!g || !g.isReady) return;
+    if (index == null) {
+      g.setConfigPartial({
+        highlightedPointIndices: undefined,
+        highlightedLinkIndices: undefined,
+      });
+      return;
     }
-    return set;
-  }, [hoveredId, graph]);
-
-  const fitNodes = useCallback((nodes: GNode[]) => {
-    const container = containerRef.current;
-    if (!container || nodes.length === 0) return;
-    const rect = container.getBoundingClientRect();
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const n of nodes) {
-      minX = Math.min(minX, n.x ?? 0);
-      maxX = Math.max(maxX, n.x ?? 0);
-      minY = Math.min(minY, n.y ?? 0);
-      maxY = Math.max(maxY, n.y ?? 0);
-    }
-    const bw = Math.max(maxX - minX, 1);
-    const bh = Math.max(maxY - minY, 1);
-    const k = Math.min(Math.min((rect.width - 80) / bw, (rect.height - 80) / bh), 1.6);
-    const clamped = Math.max(MIN_K, Math.min(MAX_K, k));
-    setTransform({
-      tx: rect.width / 2 - clamped * (minX + bw / 2),
-      ty: rect.height / 2 - clamped * (minY + bh / 2),
-      k: clamped,
+    // Native grey-out: everything not listed dims to the configured opacity.
+    // Highlighted links = the ones touching the hovered node.
+    const node = nodesRef.current[index];
+    const neighbors = g.getNeighboringPointIndices(index);
+    const touchingLinks = node
+      ? (linksByNodeIdRef.current.get(node.id) ?? [])
+      : [];
+    g.setConfigPartial({
+      highlightedPointIndices: [index, ...neighbors],
+      highlightedLinkIndices: touchingLinks,
     });
   }, []);
 
-  const fitView = useCallback(() => {
-    if (graph) fitNodes(graph.nodes);
-  }, [graph, fitNodes]);
+  // ---- data application ----
 
-  const centerView = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    setTransform((prev) => ({ ...prev, tx: rect.width / 2, ty: rect.height / 2 }));
-  }, []);
+  const applyData = useCallback((data: LinkGraph, isFirst: boolean) => {
+    const degree = new Map<string, number>();
+    for (const e of data.edges) {
+      degree.set(e.source, (degree.get(e.source) ?? 0) + 1);
+      degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
+    }
 
-  const savePositions = useCallback((nodes: GNode[]) => {
-    for (const n of nodes) {
-      if (n.x != null && n.y != null) {
-        prevPositions.current.set(n.id, { x: n.x, y: n.y });
+    const nodes = hideOrphansRef.current
+      ? data.nodes.filter((n) => (degree.get(n.id) ?? 0) > 0)
+      : data.nodes;
+    const keptIds = new Set(nodes.map((n) => n.id));
+    const edges = data.edges.filter((e) => keptIds.has(e.source) && keptIds.has(e.target));
+
+    const n = nodes.length;
+    const g = graphRef.current;
+
+    // Snapshot live space positions by node id so rebuilds (file changes,
+    // orphan toggle) keep the layout the user has arranged
+    if (g && g.isReady) {
+      const pos = g.getPointPositions();
+      for (let i = 0; i < nodesRef.current.length; i++) {
+        const node = nodesRef.current[i];
+        const x = pos[i * 2];
+        const y = pos[i * 2 + 1];
+        if (x != null && y != null) {
+          prevPositions.current.set(node.id, { x, y });
+        }
       }
     }
-  }, []);
+    const indexById = new Map(nodes.map((node, i) => [node.id, i] as const));
 
-  const fetchGraph = useCallback(async () => {
-    try {
-      const isFirst = !firstLoadDone.current;
-      const data = await getLinkGraph();
-      // Seed new nodes from previous positions (drags, drift from the live sim)
-      const seed = new Map(prevPositions.current);
-      const current = graphRef.current;
-      if (current) {
-        for (const n of current.nodes) {
-          if (n.x != null && n.y != null) {
-            seed.set(n.id, { x: n.x, y: n.y });
-          }
-        }
+    const accent = readCssColor("--color-accent", "#6366f1", 0.9);
+    const ghost = readCssColor("--color-text-muted", "#888888", 0.5);
+
+    const sizes = new Float32Array(n);
+    const colors = new Float32Array(n * 4);
+    nodes.forEach((node, i) => {
+      sizes[i] = sizeFor(node, degree);
+      colors.set(node.unresolved ? ghost : accent, i * 4);
+    });
+
+    const links = new Float32Array(edges.length * 2);
+    // Links touching unresolved targets render dashed, echoing the old
+    // dashed hollow nodes for notes that don't exist yet
+    const linkStyles = new Float32Array(edges.length);
+    const linksByNodeId = new Map<string, number[]>();
+    edges.forEach((e, i) => {
+      links[i * 2] = indexById.get(e.source) ?? 0;
+      links[i * 2 + 1] = indexById.get(e.target) ?? 0;
+      for (const endpoint of [e.source, e.target]) {
+        const indices = linksByNodeId.get(endpoint);
+        if (indices) indices.push(i);
+        else linksByNodeId.set(endpoint, [i]);
       }
-      const { nodes, links } = prepareGraph(data, seed);
-      firstLoadDone.current = true;
-      const degree = degreeMapOf(data.edges);
+      const unresolved =
+        nodes[indexById.get(e.source) ?? 0]?.unresolved ||
+        nodes[indexById.get(e.target) ?? 0]?.unresolved;
+      linkStyles[i] = unresolved ? LinkStyle.Dashed : LinkStyle.Solid;
+    });
+    linksByNodeIdRef.current = linksByNodeId;
 
-      simRef.current?.stop();
-      simRef.current = null;
-      const sim = buildSimulation(nodes, links, degree);
+    const currentIdx = selectedNoteIdRef.current
+      ? indexById.get(selectedNoteIdRef.current)
+      : undefined;
 
-      if (nodes.length <= LIVE_SIM_MAX_NODES) {
-        // Live simulation: entrance settles into a perpetual gentle float
-        let fitted = false;
-        sim.alphaTarget(FLOAT_ALPHA).on("tick", () => {
-          if (!fitted && sim.alpha() <= 0.09) {
-            fitted = true;
-            fitNodes(nodes);
+    if (!g && canvasHostRef.current && n > 0) {
+      const instance = new Graph(canvasHostRef.current, {
+        spaceSize: 4096,
+        backgroundColor: readCssColor("--color-bg-secondary", "#1a1a1a"),
+        enableDrag: true,
+        hoveredPointCursor: "pointer",
+        renderHoveredPointRing: false,
+        scalePointsOnZoom: false,
+        fitViewOnInit: true,
+        fitViewDelay: 2500,
+        fitViewPadding: 0.15,
+        fitViewDuration: 500,
+        linkDefaultArrows: true,
+        // Arrowheads widen from the link itself (width × 2 × this scale); on
+        // 1px links the default 1× triangle is ~2px and hides under the
+        // target node sprite entirely. 3 ≈ 6px — visible but proportionate.
+        linkArrowsSizeScale: 3,
+        linkDefaultWidth: 1,
+        linkOpacity: 0.4,
+        linkGreyoutOpacity: 0.06,
+        pointGreyoutOpacity: 0.15,
+        simulationCollision: 1,
+        simulationCollisionPadding: 2,
+        outlinedPointIndices: currentIdx != null ? [currentIdx] : undefined,
+        outlinedPointRingColor: readCssColor("--color-selection", "#3b82f6"),
+        attribution: "",
+        onSimulationEnd: () => {
+          if (fitOnSettleRef.current) {
+            fitOnSettleRef.current = false;
+            graphRef.current?.fitView();
           }
-          setRenderVersion((v) => v + 1);
-        });
-        setGraph({ nodes, links });
-        sim.alpha(isFirst ? 1 : 0.35).alphaDecay(0.045);
-        if (isFirst) centerView();
-        sim.restart();
-        simRef.current = sim;
+        },
+        onClick: (index) => handlePointClick(index),
+        onPointMouseOver: (index) => handleHover(index),
+        onPointMouseOut: () => handleHover(null),
+        onSimulationTick: () => {
+          labelsDirtyRef.current = true;
+        },
+        onZoom: () => {
+          labelsDirtyRef.current = true;
+        },
+      });
+      graphRef.current = instance;
+      labelsRef.current = new LabelRenderer(labelsHostRef.current!, {
+        pointerEvents: "none",
+        fontSize: 10,
+      });
+    }
+
+    const graph = graphRef.current;
+    if (!graph) return;
+
+    // Positions are mandatory: unlike d3-force, cosmos.gl does not generate
+    // initial positions itself — without an explicit positions array it
+    // treats the graph as empty and renders nothing.
+    const positions = new Float32Array(n * 2);
+    // Entrance scatter radius grows sub-linearly with the node count so big
+    // vaults don't start at the space edge
+    const spread = Math.min(400 + Math.sqrt(n) * 120, 1600);
+    nodes.forEach((node, i) => {
+      const prev = prevPositions.current.get(node.id);
+      if (prev) {
+        positions[i * 2] = prev.x;
+        positions[i * 2 + 1] = prev.y;
       } else {
-        // Large vault: static pre-ticked layout, no ongoing CPU cost
-        sim.stop().alphaDecay(0.05);
-        for (let i = 0; i < 100; i++) {
-          sim.tick();
-        }
-        savePositions(nodes);
-        setGraph({ nodes, links });
-        if (isFirst) fitNodes(nodes);
+        // New node: start near the middle so it joins the cluster instead
+        // of spawning at the space edge
+        positions[i * 2] = 2048 + (Math.random() - 0.5) * spread;
+        positions[i * 2 + 1] = 2048 + (Math.random() - 0.5) * spread;
       }
+    });
+
+    graph.setLinks(links);
+    graph.setLinkStyles(linkStyles);
+    graph.setPointPositions(positions);
+    graph.setPointSizes(sizes);
+    graph.setPointColors(colors);
+    graph.setConfigPartial({
+      outlinedPointIndices: currentIdx != null ? [currentIdx] : undefined,
+    });
+
+    // render() is what processes the raw inputs into a renderable graph;
+    // start() refuses to run before the first render ("no-op before the
+    // first render()" in cosmos.gl), so render must come first.
+    graph.render();
+    graph.unpause();
+    graph.start(isFirst ? 1 : 0.35);
+    labelsDirtyRef.current = true;
+    nodesRef.current = nodes;
+  }, [handlePointClick, handleHover]);
+
+  // ---- loading ----
+
+  const loadGraph = useCallback(async () => {
+    try {
+      const data = await getLinkGraph();
+      rawDataRef.current = data;
+      applyData(data, nodesRef.current.length === 0);
+      setCounts({ notes: data.nodes.length, links: data.edges.length });
     } catch (err) {
       console.error("Failed to load link graph:", err);
       toast.error("Failed to load link graph");
     } finally {
       setLoading(false);
     }
-  }, [fitNodes, centerView, savePositions]);
+  }, [applyData]);
 
+  // Initial load + teardown
   useEffect(() => {
-    fetchGraph();
+    void loadGraph();
     return () => {
-      simRef.current?.stop();
+      graphRef.current?.destroy();
+      graphRef.current = null;
+      labelsRef.current?.destroy();
+      labelsRef.current = null;
     };
-  }, [fetchGraph]);
+  }, [loadGraph]);
 
   // Stay live: refetch (debounced) when files change on disk while the view is open
   useEffect(() => {
@@ -241,7 +318,7 @@ export function GraphView({ onBack }: { onBack: () => void }) {
       if (timer) clearTimeout(timer);
       timer = window.setTimeout(() => {
         timer = null;
-        if (!cancelled) fetchGraph();
+        if (!cancelled) void loadGraph();
       }, 1000);
     }).then((fn) => {
       if (cancelled) fn();
@@ -252,162 +329,104 @@ export function GraphView({ onBack }: { onBack: () => void }) {
       unlisten?.();
       if (timer) clearTimeout(timer);
     };
-  }, [fetchGraph]);
+  }, [loadGraph]);
 
-  // Wheel zoom at cursor — non-passive listener so preventDefault works
+  // Re-apply theme-derived colors after a light/dark switch. The provider
+  // (a parent) applies the theme class after child effects run, so the
+  // re-read must wait for the next paint.
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const rect = container.getBoundingClientRect();
-      const px = e.clientX - rect.left;
-      const py = e.clientY - rect.top;
-      setTransform((prev) => {
-        const factor = Math.exp(-e.deltaY * 0.0015);
-        const k = Math.max(MIN_K, Math.min(MAX_K, prev.k * factor));
-        const scale = k / prev.k;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        const graph = graphRef.current;
+        if (!graph || !graph.isReady) return;
+        const n = nodesRef.current.length;
+        const accent = readCssColor("--color-accent", "#6366f1", 0.9);
+        const ghost = readCssColor("--color-text-muted", "#888888", 0.5);
+        const colors = new Float32Array(n * 4);
+        nodesRef.current.forEach((node, i) => {
+          colors.set(node.unresolved ? ghost : accent, i * 4);
+        });
+        graph.setPointColors(colors);
+        graph.setConfigPartial({
+          backgroundColor: readCssColor("--color-bg-secondary", "#1a1a1a"),
+          outlinedPointRingColor: readCssColor("--color-selection", "#3b82f6"),
+        });
+        graph.render();
+        labelsDirtyRef.current = true;
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [resolvedTheme]);
+
+  // Outline ring follows the currently open note
+  useEffect(() => {
+    const graph = graphRef.current;
+    if (!graph || !graph.isReady) return;
+    const idx = selectedNoteId
+      ? nodesRef.current.findIndex((n) => n.id === selectedNoteId)
+      : -1;
+    graph.setConfigPartial({
+      outlinedPointIndices: idx >= 0 ? [idx] : undefined,
+    });
+    labelsDirtyRef.current = true;
+  }, [selectedNoteId, counts]);
+
+  // ---- label overlay (screen-space HTML, driven by sim ticks + zoom) ----
+
+  useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      raf = requestAnimationFrame(update);
+      if (!labelsDirtyRef.current) return;
+      labelsDirtyRef.current = false;
+      const graph = graphRef.current;
+      const renderer = labelsRef.current;
+      if (!graph || !renderer || !graph.isReady) return;
+      const nodes = nodesRef.current;
+      if (nodes.length === 0) {
+        renderer.setLabels([]);
+        renderer.draw();
+        return;
+      }
+      const pos = graph.getPointPositions();
+      const currentId = selectedNoteIdRef.current;
+      if (pos.length < nodes.length * 2) {
+        // Positions not processed by the GPU yet — skip this frame
+        renderer.setLabels([]);
+        renderer.draw();
+        return;
+      }
+      const labels = nodes.map((node, i) => {
+        const [sx, sy] = graph.spaceToScreenPosition([pos[i * 2], pos[i * 2 + 1]]);
+        const radius = graph.spaceToScreenRadius(graph.getPointRadiusByIndex(i) ?? 3);
+        const isCurrent = node.id === currentId;
         return {
-          k,
-          tx: px - (px - prev.tx) * scale,
-          ty: py - (py - prev.ty) * scale,
+          id: node.id,
+          text: truncateTitle(node.title),
+          x: sx,
+          y: sy + radius + 5,
+          placement: "center" as const,
+          color: `var(--color-${isCurrent ? "text" : "text-muted"})`,
+          opacity: node.unresolved ? 0.5 : isCurrent ? 1 : 0.85,
+          style: isCurrent ? "font-weight:700" : undefined,
         };
       });
+      renderer.setLabels(labels);
+      renderer.draw();
     };
-    container.addEventListener("wheel", onWheel, { passive: false });
-    return () => container.removeEventListener("wheel", onWheel);
+    raf = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(raf);
   }, []);
 
-  const zoomBy = useCallback((factor: number) => {
-    const container = containerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    setTransform((prev) => {
-      const k = Math.max(MIN_K, Math.min(MAX_K, prev.k * factor));
-      const scale = k / prev.k;
-      const cx = rect.width / 2;
-      const cy = rect.height / 2;
-      return {
-        k,
-        tx: cx - (cx - prev.tx) * scale,
-        ty: cy - (cy - prev.ty) * scale,
-      };
-    });
-  }, []);
-
-  // Global pointer handlers for pan and node drag
-  useEffect(() => {
-    const onPointerMove = (e: PointerEvent) => {
-      const action = interaction.current;
-      if (!action) return;
-      if (action.type === "pan") {
-        setTransform((prev) => ({
-          ...prev,
-          tx: action.startTx + (e.clientX - action.startX),
-          ty: action.startTy + (e.clientY - action.startY),
-        }));
-      } else {
-        const container = containerRef.current;
-        if (!container || !graph) return;
-        const rect = container.getBoundingClientRect();
-        const wx = (e.clientX - rect.left - transform.tx) / transform.k;
-        const wy = (e.clientY - rect.top - transform.ty) / transform.k;
-        const node = graph.nodes.find((n) => n.id === action.nodeId);
-        if (node) {
-          node.x = wx - action.dx;
-          node.y = wy - action.dy;
-          node.fx = node.x;
-          node.fy = node.y;
-          prevPositions.current.set(node.id, { x: node.x, y: node.y });
-          action.moved = true;
-          setRenderVersion((v) => v + 1);
-        }
-      }
-    };
-    const onPointerUp = () => {
-      const action = interaction.current;
-      if (action?.type === "drag") {
-        if (action.moved) {
-          suppressClickRef.current = true;
-        }
-        // Release the node so it floats with the rest of the graph again
-        const dragged = graphRef.current?.nodes.find((n) => n.id === action.nodeId);
-        if (dragged) {
-          dragged.fx = null;
-          dragged.fy = null;
-        }
-        // Small reheat for a settling wobble after the drag
-        simRef.current?.alpha(FLOAT_ALPHA + 0.15).alphaTarget(FLOAT_ALPHA);
-      }
-      interaction.current = null;
-    };
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-    return () => {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-    };
-  }, [graph, transform]);
-
-  const handleBackgroundPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    interaction.current = {
-      type: "pan",
-      startX: e.clientX,
-      startY: e.clientY,
-      startTx: transform.tx,
-      startTy: transform.ty,
-    };
+  const zoomBy = (factor: number) => {
+    const graph = graphRef.current;
+    if (!graph || !graph.isReady) return;
+    graph.setZoomLevel(graph.getZoomLevel() * factor, 200);
   };
-
-  const handleNodePointerDown = (e: React.PointerEvent, node: GNode) => {
-    if (e.button !== 0) return;
-    e.stopPropagation();
-    const container = containerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const wx = (e.clientX - rect.left - transform.tx) / transform.k;
-    const wy = (e.clientY - rect.top - transform.ty) / transform.k;
-    interaction.current = {
-      type: "drag",
-      nodeId: node.id,
-      dx: wx - (node.x ?? 0),
-      dy: wy - (node.y ?? 0),
-      moved: false,
-    };
-    // Reheat the simulation so the graph wobbles while dragging
-    node.fx = node.x;
-    node.fy = node.y;
-    simRef.current?.alphaTarget(DRAG_ALPHA).restart();
-  };
-
-  const handleNodeClick = async (node: GNode) => {
-    // Suppress navigation right after a node drag
-    if (suppressClickRef.current) {
-      suppressClickRef.current = false;
-      return;
-    }
-    if (node.unresolved) {
-      toast.info(`Note "${node.title}" does not exist yet`);
-      return;
-    }
-    await selectNote(node.id);
-    onBack();
-  };
-
-  const visibleNodes = useMemo(() => {
-    if (!graph) return [];
-    if (!hideOrphans) return graph.nodes;
-    return graph.nodes.filter((n) => (degreeById.get(n.id) ?? 0) > 0);
-  }, [graph, hideOrphans, degreeById]);
-
-  const visibleIds = useMemo(() => new Set(visibleNodes.map((n) => n.id)), [visibleNodes]);
-
-  const nodeRadius = (node: GNode) => radiusFor(node, degreeById);
-
-  const isDimmed = (id: string) => neighborIds !== null && !neighborIds.has(id);
-
-  void renderVersion;
 
   return (
     <div className="h-full flex bg-bg w-full relative">
@@ -419,21 +438,17 @@ export function GraphView({ onBack }: { onBack: () => void }) {
           </IconButton>
           <div className="font-medium text-base">
             Graph
-            {graph && (
+            {counts && (
               <span className="text-text-muted font-normal text-sm ml-2">
-                {graph.nodes.length} notes · {graph.links.length} links
+                {counts.notes} notes · {counts.links} links
               </span>
             )}
           </div>
         </div>
       </div>
 
-      {/* Canvas */}
-      <div
-        ref={containerRef}
-        className="relative flex-1 overflow-hidden bg-bg-secondary cursor-grab active:cursor-grabbing"
-        onPointerDown={handleBackgroundPointerDown}
-      >
+      {/* Canvas (cosmos.gl owns the wheel/pan/drag interaction on its canvas) */}
+      <div ref={canvasHostRef} className="relative flex-1 overflow-hidden bg-bg-secondary cursor-grab active:cursor-grabbing">
         {!isWindows && <div className="absolute top-0 left-0 right-0 h-11 z-10" data-tauri-drag-region />}
 
         {loading && (
@@ -442,136 +457,17 @@ export function GraphView({ onBack }: { onBack: () => void }) {
           </div>
         )}
 
-        {!loading && graph && graph.nodes.length === 0 && (
+        {!loading && counts?.notes === 0 && (
           <div className="absolute inset-0 flex items-center justify-center text-text-muted text-sm">
             No notes yet — create a few and link them with [[wikilinks]]
           </div>
         )}
 
-        {graph && graph.nodes.length > 0 && (
-          <svg className="w-full h-full select-none" data-graph-canvas>
-            <defs>
-              <marker
-                id="graph-arrow"
-                viewBox="0 0 10 10"
-                refX="8.5"
-                refY="5"
-                markerWidth="7"
-                markerHeight="7"
-                orient="auto-start-reverse"
-                markerUnits="userSpaceOnUse"
-              >
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-text-muted)" />
-              </marker>
-              <marker
-                id="graph-arrow-active"
-                viewBox="0 0 10 10"
-                refX="8.5"
-                refY="5"
-                markerWidth="7"
-                markerHeight="7"
-                orient="auto-start-reverse"
-                markerUnits="userSpaceOnUse"
-              >
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-text)" />
-              </marker>
-            </defs>
-            <g transform={`translate(${transform.tx},${transform.ty}) scale(${transform.k})`}>
-              {graph.links.map((e, i) => {
-                const s = e.source as GNode;
-                const t = e.target as GNode;
-                if (!visibleIds.has(s.id) || !visibleIds.has(t.id)) return null;
-                const x1c = s.x ?? 0;
-                const y1c = s.y ?? 0;
-                const x2c = t.x ?? 0;
-                const y2c = t.y ?? 0;
-                const dx = x2c - x1c;
-                const dy = y2c - y1c;
-                const len = Math.hypot(dx, dy) || 1;
-                // Stop lines at the node borders so the arrowhead stays visible
-                const pad1 = nodeRadius(s) + 3;
-                const pad2 = nodeRadius(t) + 4;
-                if (len <= pad1 + pad2 + 2) return null;
-                const x1 = x1c + (dx / len) * pad1;
-                const y1 = y1c + (dy / len) * pad1;
-                const x2 = x2c - (dx / len) * pad2;
-                const y2 = y2c - (dy / len) * pad2;
-                const active = hoveredId !== null && (s.id === hoveredId || t.id === hoveredId);
-                const dim = hoveredId !== null && !active;
-                return (
-                  <line
-                    key={`e${i}`}
-                    x1={x1}
-                    y1={y1}
-                    x2={x2}
-                    y2={y2}
-                    stroke={active ? "var(--color-text)" : "var(--color-text-muted)"}
-                    strokeWidth={active ? 1.25 : 0.75}
-                    opacity={dim ? 0.06 : active ? 0.85 : 0.3}
-                    markerEnd={active ? "url(#graph-arrow-active)" : "url(#graph-arrow)"}
-                  />
-                );
-              })}
-              {visibleNodes.map((n) => {
-                const dim = isDimmed(n.id);
-                const r = nodeRadius(n);
-                const isCurrent = n.id === selectedNoteId;
-                return (
-                  <g
-                    key={n.id}
-                    transform={`translate(${n.x ?? 0},${n.y ?? 0})`}
-                    opacity={dim && !isCurrent ? 0.15 : 1}
-                    className="cursor-pointer"
-                    onMouseEnter={() => setHoveredId(n.id)}
-                    onMouseLeave={() => setHoveredId((prev) => (prev === n.id ? null : prev))}
-                    onPointerDown={(e) => handleNodePointerDown(e, n)}
-                    onClick={() => handleNodeClick(n)}
-                  >
-                    {n.unresolved ? (
-                      <circle
-                        r={r}
-                        fill="var(--color-bg-secondary)"
-                        stroke="var(--color-text-muted)"
-                        strokeWidth={1.5}
-                        strokeDasharray="2 2"
-                      />
-                    ) : (
-                      <>
-                        {isCurrent && (
-                          <circle r={r + 4} fill="var(--color-selection)" />
-                        )}
-                        <circle
-                          r={r}
-                          fill="var(--color-accent)"
-                          stroke={isCurrent ? "var(--color-text)" : "transparent"}
-                          strokeWidth={isCurrent ? 1.5 : 3}
-                          opacity={0.9}
-                        />
-                      </>
-                    )}
-                    <text
-                      y={r + 9}
-                      textAnchor="middle"
-                      fontSize={10}
-                      fill={isCurrent ? "var(--color-text)" : "var(--color-text-muted)"}
-                      opacity={isCurrent ? 1 : 0.85}
-                      stroke="var(--color-bg-secondary)"
-                      strokeWidth={3.5}
-                      paintOrder="stroke"
-                      className="pointer-events-none"
-                      style={{ fontWeight: isCurrent ? 700 : 500 }}
-                    >
-                      {n.title.length > 28 ? `${n.title.slice(0, 28)}…` : n.title}
-                    </text>
-                  </g>
-                );
-              })}
-            </g>
-          </svg>
-        )}
+        {/* Screen-space labels overlay */}
+        <div ref={labelsHostRef} className="absolute inset-0 pointer-events-none" />
 
         {/* Floating controls */}
-        {graph && graph.nodes.length > 0 && (
+        {counts && counts.notes > 0 && (
           <div
             className="absolute bottom-4 right-4 flex flex-col gap-1 bg-bg border border-border rounded-lg shadow-lg p-1"
             onPointerDown={(e) => e.stopPropagation()}
@@ -582,7 +478,7 @@ export function GraphView({ onBack }: { onBack: () => void }) {
             <IconButton title="Zoom out" onClick={() => zoomBy(0.8)}>
               <MinusIcon className="w-4.5 h-4.5 stroke-[1.5]" />
             </IconButton>
-            <IconButton title="Fit graph" onClick={fitView}>
+            <IconButton title="Fit graph" onClick={() => graphRef.current?.fitView()}>
               <svg
                 className="w-4.5 h-4.5 stroke-[1.5]"
                 fill="none"
@@ -600,7 +496,12 @@ export function GraphView({ onBack }: { onBack: () => void }) {
             </IconButton>
             <IconButton
               title={hideOrphans ? "Show orphan notes" : "Hide orphan notes"}
-              onClick={() => setHideOrphans((v) => !v)}
+              onClick={() => {
+                const next = !hideOrphans;
+                hideOrphansRef.current = next;
+                setHideOrphans(next);
+                if (rawDataRef.current) applyData(rawDataRef.current, false);
+              }}
               className={hideOrphans ? "bg-bg-emphasis" : undefined}
             >
               <svg

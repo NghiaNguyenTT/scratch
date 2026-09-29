@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import { toast } from "sonner";
 import { NotesProvider, useNotes } from "./context/NotesContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
@@ -12,7 +12,11 @@ import { Editor } from "./components/editor/Editor";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import { FolderPicker } from "./components/layout/FolderPicker";
 import { CommandPalette } from "./components/command-palette/CommandPalette";
-import { GraphView } from "./components/graph/GraphView";
+// Lazy: the graph pulls in the WebGL stack (@cosmos.gl/graph), which is far
+// too heavy to pay for on the main bundle
+const GraphView = lazy(() =>
+  import("./components/graph/GraphView").then((m) => ({ default: m.GraphView })),
+);
 import { SettingsPage } from "./components/settings";
 import {
   SpinnerIcon,
@@ -511,7 +515,15 @@ function AppContent() {
         {view === "settings" ? (
           <SettingsPage onBack={closeSettings} />
         ) : view === "graph" ? (
-          <GraphView onBack={() => setView("notes")} />
+          <Suspense
+            fallback={
+              <div className="h-full flex items-center justify-center text-text-muted/70 text-sm">
+                Loading graph...
+              </div>
+            }
+          >
+            <GraphView onBack={() => setView("notes")} />
+          </Suspense>
         ) : (
           <>
             <div
