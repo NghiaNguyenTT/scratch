@@ -42,7 +42,6 @@ import { isAllowedUrlScheme, normalizeUrl } from "../../lib/urls";
 import { resolveNoteByTitle } from "../../lib/wikilinks";
 import { WikilinkPreviewHost } from "./WikilinkPreview";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { useOptionalNotes } from "../../context/NotesContext";
 import { useTheme } from "../../context/ThemeContext";
 import { Frontmatter } from "./Frontmatter";
@@ -52,6 +51,8 @@ import { SearchToolbar } from "./SearchToolbar";
 import { SlashCommand } from "./SlashCommand";
 import { Wikilink, type WikilinkStorage } from "./Wikilink";
 import { WikilinkSuggestion } from "./WikilinkSuggestion";
+import { EditorContextMenu } from "./EditorContextMenu";
+import type { AiProvider } from "../../services/ai";
 import { EditorWidthHandles } from "./EditorWidthHandle";
 import { ScratchBlockMath, normalizeBlockMath, katexMacros } from "./MathExtensions";
 import { cn } from "../../lib/utils";
@@ -425,6 +426,10 @@ interface EditorProps {
   onEditorReady?: (editor: TiptapEditor | null) => void;
   onSaveToFolder?: () => void;
   saveToFolderDisabled?: boolean;
+  aiProvider?: AiProvider | null;
+  onSelectAiProvider?: (provider: AiProvider) => void;
+  onRunAiPrompt?: (prompt: string) => void;
+  onOpenAiPromptModal?: (initialPrompt: string) => void;
 }
 
 /**
@@ -488,6 +493,10 @@ export function Editor({
   previewMode,
   onSaveToFolder,
   saveToFolderDisabled,
+  aiProvider,
+  onSelectAiProvider,
+  onRunAiPrompt,
+  onOpenAiPromptModal,
 }: EditorProps) {
   // Always call the hook (rules of hooks), but it returns null outside NotesProvider
   const notesCtx = useOptionalNotes();
@@ -575,6 +584,18 @@ export function Editor({
   notesRef.current = notes;
   const notesCtxRef = useRef(notesCtx);
   notesCtxRef.current = notesCtx;
+
+  // Right-click "Open" on a [[wikilink]] — mirrors the left-click handler
+  const openWikilinkByTitle = useCallback((noteTitle: string) => {
+    const currentNotes = notesRef.current;
+    if (!noteTitle || !currentNotes) return;
+    const note = resolveNoteByTitle(noteTitle, currentNotes);
+    if (note) {
+      notesCtxRef.current?.selectNote(note.id);
+    } else {
+      toast.info(`Note "${noteTitle}" does not exist yet`);
+    }
+  }, []);
 
   // Keep ref in sync with current note ID
   currentNoteIdRef.current = currentNote?.id ?? null;
@@ -733,6 +754,15 @@ export function Editor({
       await saveImmediately(loadedNoteIdRef.current, markdown);
     }
   }, [saveImmediately, getMarkdown]);
+
+  // Run an agent on the note: flush pending edits first so the CLI always
+  // works on the content currently shown in the editor
+  const runAiPrompt = useCallback(
+    (prompt: string) => {
+      void flushPendingSave().then(() => onRunAiPrompt?.(prompt));
+    },
+    [flushPendingSave, onRunAiPrompt],
+  );
 
   // Schedule a debounced save (markdown computed only when timer fires)
   const scheduleSave = useCallback(() => {
@@ -2508,185 +2538,30 @@ export function Editor({
                   </div>
                 </div>
               )}
-              <div
-                className="h-full"
-                onContextMenu={async (e) => {
-                  if (!editor) return;
-
-                  // Get the position at the click coordinates
-                  const clickPos = editor.view.posAtCoords({
-                    left: e.clientX,
-                    top: e.clientY,
-                  });
-
-                  if (!clickPos) return;
-
-                  // Set the selection to the clicked position
-                  editor.chain().focus().setTextSelection(clickPos.pos).run();
-
-                  // Check if we're in a table after updating selection
-                  if (!editor.isActive("table")) return;
-
-                  e.preventDefault();
-
-                  try {
-                    // Work with the updated selection
-                    const { state } = editor;
-                    const { selection } = state;
-                    const { $anchor } = selection;
-
-                    // Find the table cell/header node
-                    let cellDepth = $anchor.depth;
-                    while (
-                      cellDepth > 0 &&
-                      state.doc.resolve($anchor.pos).node(cellDepth).type
-                        .name !== "tableCell" &&
-                      state.doc.resolve($anchor.pos).node(cellDepth).type
-                        .name !== "tableHeader"
-                    ) {
-                      cellDepth--;
-                    }
-
-                    // Guard: if we didn't find a table cell, bail out
-                    if (cellDepth <= 0) return;
-
-                    const resolvedNode = state.doc
-                      .resolve($anchor.pos)
-                      .node(cellDepth);
-                    if (
-                      resolvedNode.type.name !== "tableCell" &&
-                      resolvedNode.type.name !== "tableHeader"
-                    ) {
-                      return;
-                    }
-
-                    // Get the cell position
-                    const cellPos = $anchor.before(cellDepth);
-
-                    // Check if we're in the first column (index 0 in parent row)
-                    const rowNode = state.doc
-                      .resolve(cellPos)
-                      .node(cellDepth - 1);
-                    let cellIndex = 0;
-                    rowNode.forEach((_node, offset) => {
-                      if (
-                        offset <
-                        cellPos - $anchor.before(cellDepth - 1) - 1
-                      ) {
-                        cellIndex++;
-                      }
-                    });
-                    const isFirstColumn = cellIndex === 0;
-
-                    // Check if we're in the first row (index 0 in parent table)
-                    const tableNode = state.doc
-                      .resolve(cellPos)
-                      .node(cellDepth - 2);
-                    let rowIndex = 0;
-                    tableNode.forEach((_node, offset) => {
-                      if (
-                        offset <
-                        $anchor.before(cellDepth - 1) -
-                          $anchor.before(cellDepth - 2) -
-                          1
-                      ) {
-                        rowIndex++;
-                      }
-                    });
-                    const isFirstRow = rowIndex === 0;
-
-                    const menuItems = [];
-
-                    // Only show "Add Column Before" if not in first column
-                    if (!isFirstColumn) {
-                      menuItems.push(
-                        await MenuItem.new({
-                          text: "Add Column Before",
-                          action: () =>
-                            editor.chain().focus().addColumnBefore().run(),
-                        }),
-                      );
-                    }
-                    menuItems.push(
-                      await MenuItem.new({
-                        text: "Add Column After",
-                        action: () =>
-                          editor.chain().focus().addColumnAfter().run(),
-                      }),
-                    );
-                    menuItems.push(
-                      await MenuItem.new({
-                        text: "Delete Column",
-                        action: () =>
-                          editor.chain().focus().deleteColumn().run(),
-                      }),
-                    );
-                    menuItems.push(
-                      await PredefinedMenuItem.new({ item: "Separator" }),
-                    );
-
-                    // Only show "Add Row Above" if not in first row
-                    if (!isFirstRow) {
-                      menuItems.push(
-                        await MenuItem.new({
-                          text: "Add Row Above",
-                          action: () =>
-                            editor.chain().focus().addRowBefore().run(),
-                        }),
-                      );
-                    }
-                    menuItems.push(
-                      await MenuItem.new({
-                        text: "Add Row Below",
-                        action: () =>
-                          editor.chain().focus().addRowAfter().run(),
-                      }),
-                    );
-                    menuItems.push(
-                      await MenuItem.new({
-                        text: "Delete Row",
-                        action: () => editor.chain().focus().deleteRow().run(),
-                      }),
-                    );
-                    menuItems.push(
-                      await PredefinedMenuItem.new({ item: "Separator" }),
-                    );
-                    menuItems.push(
-                      await MenuItem.new({
-                        text: "Toggle Header Row",
-                        action: () =>
-                          editor.chain().focus().toggleHeaderRow().run(),
-                      }),
-                    );
-                    menuItems.push(
-                      await MenuItem.new({
-                        text: "Toggle Header Column",
-                        action: () =>
-                          editor.chain().focus().toggleHeaderColumn().run(),
-                      }),
-                    );
-                    menuItems.push(
-                      await PredefinedMenuItem.new({ item: "Separator" }),
-                    );
-                    menuItems.push(
-                      await MenuItem.new({
-                        text: "Delete Table",
-                        action: () =>
-                          editor.chain().focus().deleteTable().run(),
-                      }),
-                    );
-
-                    const menu = await Menu.new({ items: menuItems });
-
-                    await menu.popup();
-                  } catch (err) {
-                    console.error("Table context menu error:", err);
-                  }
-                }}
+              <EditorContextMenu
+                editor={editor}
+                notes={notes ?? null}
+                aiProvider={aiProvider}
+                onSelectAiProvider={onSelectAiProvider}
+                onRunAiPrompt={runAiPrompt}
+                onOpenAiPromptModal={onOpenAiPromptModal}
+                onOpenWikilink={openWikilinkByTitle}
+                onExportPdf={
+                  previewMode
+                    ? undefined
+                    : () => window.dispatchEvent(new CustomEvent("export-pdf"))
+                }
+                note={
+                  previewMode || !currentNote
+                    ? null
+                    : { title: currentNote.title, path: currentNote.path }
+                }
               >
-                <EditorContent editor={editor} className="h-full text-text" />
-                <WikilinkPreviewHost editor={editor} />
-              </div>
+                <div className="h-full">
+                  <EditorContent editor={editor} className="h-full text-text" />
+                  <WikilinkPreviewHost editor={editor} />
+                </div>
+              </EditorContextMenu>
             </>
           )}
         </div>

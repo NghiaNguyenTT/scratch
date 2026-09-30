@@ -284,10 +284,104 @@ html.dark {
   animation: pulse-gentle 1.3s ease-in-out infinite;
 }
 
+/* AI working overlay — ambient glow, shimmer text, indeterminate progress */
+.ai-glow {
+  position: absolute;
+  border-radius: 9999px;
+  background: var(--color-selection);
+  filter: blur(110px);
+  pointer-events: none;
+}
+
+.ai-glow-a {
+  top: 10%;
+  left: 50%;
+  width: 480px;
+  height: 480px;
+  margin-left: -240px;
+  opacity: 0.5;
+  animation: ai-glow-a 7s ease-in-out infinite;
+}
+
+@keyframes ai-glow-a {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(40px, 30px) scale(1.15);
+  }
+}
+
+.ai-glow-b {
+  bottom: 8%;
+  left: 50%;
+  width: 380px;
+  height: 380px;
+  margin-left: -190px;
+  opacity: 0.35;
+  animation: ai-glow-b 9s ease-in-out infinite;
+}
+
+@keyframes ai-glow-b {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1.12);
+  }
+  50% {
+    transform: translate(-36px, -24px) scale(0.95);
+  }
+}
+
+.ai-shimmer-text {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-text-muted) 0%,
+    var(--color-text) 50%,
+    var(--color-text-muted) 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ai-shimmer 2.4s linear infinite;
+}
+
+@keyframes ai-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.ai-progress-bar {
+  width: 40%;
+  height: 100%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, transparent, var(--color-selection), transparent);
+  animation: ai-progress 1.5s ease-in-out infinite;
+}
+
+@keyframes ai-progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-spin-slow,
   .animate-bounce-gentle,
-  .animate-pulse-gentle {
+  .animate-pulse-gentle,
+  .ai-glow-a,
+  .ai-glow-b,
+  .ai-shimmer-text,
+  .ai-progress-bar {
     animation: none;
   }
 }
@@ -320,11 +414,6 @@ html.dark {
 .prose {
   font-family: var(--editor-font-family);
   font-size: var(--editor-base-font-size);
-  /* 430 instead of 400: Chromium on Windows renders grayscale AA without
-     macOS's stroke thickening, so 400 reads thin. Variable fonts (Segoe UI
-     Variable, Inter Variable) render a true 430; static fonts round back
-     to 400. */
-  font-weight: 430;
   line-height: var(--editor-line-height);
   color: var(--color-text);
 }

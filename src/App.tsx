@@ -3,6 +3,8 @@ import { toast } from "sonner";
 import { NotesProvider, useNotes } from "./context/NotesContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
+import type { Settings } from "./types/note";
 import { GitProvider } from "./context/GitContext";
 import { TooltipProvider, Toaster } from "./components/ui";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -80,6 +82,10 @@ function AppContent() {
   const [view, setView] = useState<ViewState>("notes");
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [aiModalOpen, setAiModalOpen] = useState(false);
+  // Pre-filled prompt + provenance for the AI modal (command palette vs
+  // editor context menu — "back" only reopens the palette for the former)
+  const [aiModalInitialPrompt, setAiModalInitialPrompt] = useState("");
+  const [aiModalFromMenu, setAiModalFromMenu] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [exportPdfOpen, setExportPdfOpen] = useState(false);
   const [aiEditing, setAiEditing] = useState(false);
@@ -142,10 +148,19 @@ function AppContent() {
     setView("graph");
   }, []);
 
-  // Go back to command palette from AI modal
-  const handleBackToPalette = useCallback(() => {
-    setAiModalOpen(false);
-    setPaletteOpen(true);
+  // Open the AI modal pre-filled from the editor context menu
+  const handleOpenAiModalFromMenu = useCallback((initialPrompt: string) => {
+    setAiModalInitialPrompt(initialPrompt);
+    setAiModalFromMenu(true);
+    setAiModalOpen(true);
+  }, []);
+
+  // Open the AI modal from the command palette
+  const handleOpenAiModalFromPalette = useCallback((provider: AiProvider) => {
+    setAiProvider(provider);
+    setAiModalInitialPrompt("");
+    setAiModalFromMenu(false);
+    setAiModalOpen(true);
   }, []);
 
   // AI Edit handler
@@ -165,11 +180,18 @@ function AppContent() {
         } else if (aiProvider === "opencode") {
           result = await aiService.executeOpenCodeEdit(currentNote.path, prompt);
         } else if (aiProvider === "ollama") {
-          result = await aiService.executeOllamaEdit(
-            currentNote.path,
-            prompt,
-            ollamaModel || "qwen3:8b",
-          );
+          // Context-menu runs don't go through the modal, so no model is
+          // passed — fall back to the persisted Ollama model
+          let model = ollamaModel;
+          if (!model) {
+            try {
+              const settings = await invoke<Settings>("get_settings");
+              model = settings.ollamaModel || "qwen3:8b";
+            } catch {
+              model = "qwen3:8b";
+            }
+          }
+          result = await aiService.executeOllamaEdit(currentNote.path, prompt, model);
         } else {
           result = await aiService.executeClaudeEdit(currentNote.path, prompt);
         }
@@ -541,6 +563,10 @@ function AppContent() {
               onEditorReady={(editor) => {
                 editorRef.current = editor;
               }}
+              aiProvider={aiProvider}
+              onSelectAiProvider={setAiProvider}
+              onRunAiPrompt={(prompt) => handleAiEdit(prompt)}
+              onOpenAiPromptModal={handleOpenAiModalFromMenu}
             />
           </>
         )}
@@ -568,10 +594,7 @@ function AppContent() {
         onOpenSettings={toggleSettings}
         onOpenGraphView={openGraphView}
         onOpenShortcuts={() => setShortcutsOpen(true)}
-        onOpenAiModal={(provider) => {
-          setAiProvider(provider);
-          setAiModalOpen(true);
-        }}
+        onOpenAiModal={handleOpenAiModalFromPalette}
         onExportPdf={() => setExportPdfOpen(true)}
         focusMode={focusMode}
         onToggleFocusMode={toggleFocusMode}
@@ -580,9 +603,13 @@ function AppContent() {
       <AiEditModal
         open={aiModalOpen}
         provider={aiProvider}
-        onBack={handleBackToPalette}
+        onBack={() => {
+          setAiModalOpen(false);
+          if (!aiModalFromMenu) setPaletteOpen(true);
+        }}
         onExecute={handleAiEdit}
         isExecuting={aiEditing}
+        initialPrompt={aiModalInitialPrompt}
       />
       <ExportPdfModal
         open={exportPdfOpen && !!currentNote}
@@ -591,27 +618,45 @@ function AppContent() {
         noteTitle={currentNote?.title ?? "note"}
       />
 
-      {/* AI Editing Overlay */}
+      {/* AI Editing Overlay — glass card with ambient glow, ping rings,
+          shimmer text and an indeterminate progress bar */}
       {aiEditing && (
-        <div className="fixed inset-0 bg-bg/50 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="flex items-center gap-2">
-            {aiProvider === "codex" ? (
-              <CodexIcon className="w-4.5 h-4.5 fill-text-muted animate-spin-slow" />
-            ) : aiProvider === "opencode" ? (
-              <OpenCodeIcon className="w-4.5 h-4.5 fill-text-muted animate-pulse-gentle" />
-            ) : aiProvider === "ollama" ? (
-              <OllamaIcon className="w-4.5 h-4.5 fill-text-muted animate-bounce-gentle" />
-            ) : (
-              <ClaudeIcon className="w-4.5 h-4.5 fill-text-muted animate-spin-slow" />
-            )}
-            <div className="text-sm font-medium text-text">
-              {aiProvider === "codex"
-                ? "Codex is editing your note..."
-                : aiProvider === "opencode"
-                  ? "OpenCode is editing your note..."
-                : aiProvider === "ollama"
-                  ? "Ollama is editing your note..."
-                  : "Claude is editing your note..."}
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden select-none">
+          <div className="absolute inset-0 bg-bg/55 backdrop-blur-md animate-in fade-in duration-300" />
+          <div className="ai-glow ai-glow-a" />
+          <div className="ai-glow ai-glow-b" />
+          <div className="relative flex flex-col items-center gap-6 px-14 py-10 rounded-2xl border border-border bg-bg/75 backdrop-blur-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-300">
+            <div className="relative flex items-center justify-center w-16 h-16">
+              <span className="absolute inset-0 rounded-full border border-[var(--color-selection)] opacity-80 animate-ping" />
+              <span className="absolute inset-1.5 rounded-full border border-[var(--color-selection)] opacity-50 animate-ping [animation-delay:450ms]" />
+              {aiProvider === "codex" ? (
+                <CodexIcon className="w-9 h-9 fill-text animate-pulse-gentle" />
+              ) : aiProvider === "opencode" ? (
+                <OpenCodeIcon className="w-9 h-9 fill-text animate-pulse-gentle" />
+              ) : aiProvider === "ollama" ? (
+                <OllamaIcon className="w-9 h-9 fill-text animate-pulse-gentle" />
+              ) : (
+                <ClaudeIcon className="w-9 h-9 fill-text animate-pulse-gentle" />
+              )}
+            </div>
+            <div className="flex flex-col items-center gap-1.5">
+              <div className="ai-shimmer-text text-base font-medium">
+                {aiProvider === "codex"
+                  ? "Codex is editing your note…"
+                  : aiProvider === "opencode"
+                    ? "OpenCode is editing your note…"
+                    : aiProvider === "ollama"
+                      ? "Ollama is editing your note…"
+                      : "Claude is editing your note…"}
+              </div>
+              {currentNote && (
+                <div className="text-xs text-text-muted max-w-[280px] truncate">
+                  {currentNote.title}
+                </div>
+              )}
+            </div>
+            <div className="w-64 h-1 rounded-full bg-bg-muted overflow-hidden">
+              <div className="ai-progress-bar" />
             </div>
           </div>
         </div>

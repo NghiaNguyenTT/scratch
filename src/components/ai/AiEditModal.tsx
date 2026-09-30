@@ -17,6 +17,8 @@ interface AiEditModalProps {
   onBack: () => void; // Go back to command palette
   onExecute: (prompt: string, ollamaModel?: string) => Promise<void>;
   isExecuting: boolean;
+  /** Pre-filled prompt, e.g. selection context from the editor context menu */
+  initialPrompt?: string;
 }
 
 export function AiEditModal({
@@ -25,6 +27,7 @@ export function AiEditModal({
   onBack,
   onExecute,
   isExecuting,
+  initialPrompt,
 }: AiEditModalProps) {
   const [prompt, setPrompt] = useState("");
   const [cliInstalled, setCliInstalled] = useState<boolean | null>(null);
@@ -70,8 +73,19 @@ export function AiEditModal({
   useEffect(() => {
     if (open && inputRef.current && cliInstalled && !isExecuting) {
       inputRef.current.focus();
+      // Put the caret at the end so typed instructions follow any pre-fill
+      const len = inputRef.current.value.length;
+      inputRef.current.setSelectionRange(len, len);
     }
   }, [open, cliInstalled, isExecuting]);
+
+  // Apply the pre-filled prompt when the modal opens
+  useEffect(() => {
+    if (open && initialPrompt) {
+      setPrompt(initialPrompt);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Check for provider CLI when modal opens
   useEffect(() => {
