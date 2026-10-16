@@ -45,6 +45,24 @@ body,
     print-color-adjust: exact !important;
   }
 
+  /* Paint the whole sheet with the note's background colour.
+
+     The root element's background stops at the page box, so the margin band
+     (everything outside it) is painted with Chromium's own default canvas
+     colour instead - #121212 in dark mode, white in light mode. That band is
+     what made a dark PDF look like a black frame that ignored the user's
+     Background setting. A fixed overlay escapes the page box, repeats on
+     every page and covers the full sheet; z-index:-1 keeps it behind element
+     backgrounds, so code chips, tables and images still paint on top. The
+     overhang only has to exceed the widest print margin (1in). */
+  html::before {
+    content: "";
+    position: fixed;
+    inset: -2in;
+    background: var(--color-bg);
+    z-index: -1;
+  }
+
   .pdf-root {
     padding: 0 !important;
   }
