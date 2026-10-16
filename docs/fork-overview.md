@@ -12,15 +12,18 @@ and exactly how it diverges from upstream.
 | **Product** | Scratch — minimalist, offline-first markdown notes app |
 | **Stack** | Tauri v2 (Rust) + React 19 / TypeScript / Tailwind v4 + TipTap 3 |
 | **License** | MIT (forking is explicitly sanctioned upstream) |
-| **Fork version** | `1.1.6` (`package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`) |
+| **Fork version** | `1.1.7` (`package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`) |
 | **Upstream version** | `1.0.0` |
 
 ## Divergence from upstream
 
 The fork branched from upstream commit `9126a5a` (*"chore: bump version to 1.0.0"*)
-and added **6 commits** on top:
+and has added **9 commits** on top, followed by a version-bump release commit:
 
 ```
+2b364d3  feat: simplify font selection in Appearance settings
+9952101  chore: upgrade dependencies to latest and align Tauri plugin versions
+f3470df  docs: add fork overview describing scope and divergence from upstream
 deae5bc  feat: context menu v2 with agent actions on selection, animated AI overlay
 afff6b8  feat: rebuild graph view on cosmos.gl (WebGL)
 36bb07f  feat: toggleable editor toolbar, save status by timestamp; fix PDF heading underline
@@ -29,7 +32,7 @@ b553d45  feat: PDF export with bookmarks, margins, and font-size options
 9f60153  feat: wiki-link graph view, hover page previews, fork updater
 ```
 
-Measured against upstream: **41 files changed, +5,770 / −770 lines.**
+Measured against upstream: **42 files changed, +7,789 / −3,735 lines.**
 
 Upstream has **no newer commits** — the fork is fully current with `erictli/scratch@main`.
 
