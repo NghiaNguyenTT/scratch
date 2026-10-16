@@ -21,6 +21,8 @@ export function buildPreviewExtensions() {
     StarterKit.configure({
       heading: { levels: [1, 2, 3, 4, 5, 6] },
       codeBlock: false,
+      // StarterKit ships Link; previews configure it explicitly below
+      link: false,
     }),
     CodeBlockLowlight.extend({
       addNodeView() {

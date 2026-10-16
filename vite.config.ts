@@ -38,8 +38,8 @@ export default defineConfig(async () => ({
     // - Windows: WebView2 (Chromium-based)
     // - Linux: WebKitGTK
     target: ["es2021", "chrome105", "safari14"],
-    // Use esbuild for fast minification
-    minify: "esbuild",
+    // Use the built-in Oxc minifier (Vite 8 default; esbuild is no longer bundled)
+    minify: "oxc",
     // Optimize chunk splitting
     rollupOptions: {
       // Two entries: the main app and the hidden PDF export window
@@ -48,34 +48,25 @@ export default defineConfig(async () => ({
         pdf: "pdf.html",
       },
       output: {
-        // Manual chunk splitting for better caching
-        manualChunks: {
-          // TipTap and related editor libraries
-          "tiptap": [
-            "@tiptap/react",
-            "@tiptap/starter-kit",
-            "@tiptap/markdown",
-            "@tiptap/extension-link",
-            "@tiptap/extension-image",
-            "@tiptap/extension-placeholder",
-            "@tiptap/extension-task-list",
-            "@tiptap/extension-task-item",
-            "@tiptap/extension-table",
-            "@tiptap/extension-table-row",
-            "@tiptap/extension-table-cell",
-            "@tiptap/extension-table-header",
-            "@tiptap/extension-code-block-lowlight",
-          ],
+        // Manual chunk splitting for better caching.
+        // Vite 8 (Rolldown) accepts only the function form of `manualChunks`.
+        manualChunks(id: string) {
+          if (!id.includes("node_modules")) return undefined;
+          // TipTap and its ProseMirror internals
+          if (id.includes("@tiptap") || id.includes("prosemirror")) {
+            return "tiptap";
+          }
           // Syntax highlighting
-          "highlight": ["lowlight", "highlight.js"],
-          // React core
-          "react-vendor": ["react", "react-dom"],
+          if (id.includes("lowlight") || id.includes("highlight.js")) {
+            return "highlight";
+          }
           // Tauri APIs
-          "tauri": [
-            "@tauri-apps/api",
-            "@tauri-apps/plugin-dialog",
-            "@tauri-apps/plugin-opener",
-          ],
+          if (id.includes("@tauri-apps")) return "tauri";
+          // React core
+          if (/node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) {
+            return "react-vendor";
+          }
+          return undefined;
         },
       },
     },
