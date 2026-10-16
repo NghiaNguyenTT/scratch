@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   useTheme,
   defaultThemeColors,
@@ -13,6 +13,7 @@ import type {
   ThemeColorKey,
 } from "../../types/note";
 import {
+  ChevronDownIcon,
   ChevronRightIcon,
   EyeIcon,
   MinusIcon,
@@ -55,12 +56,11 @@ const editorWidthOptions: { value: EditorWidth; label: string }[] = [
   { value: "custom", label: "Custom" },
 ];
 
-// Font family options
-const fontFamilyOptions: { value: FontFamily; label: string }[] = [
+// Preset font families offered above the installed-font list
+const fontPresets: { value: Exclude<FontFamily, "custom">; label: string }[] = [
   { value: "system-sans", label: "Sans" },
   { value: "serif", label: "Serif" },
   { value: "monospace", label: "Mono" },
-  { value: "custom", label: "Custom" },
 ];
 
 // Bold weight options (medium excluded for monospace)
@@ -209,30 +209,16 @@ export function AppearanceSettingsSection() {
           {/* Font Family */}
           <div className="flex items-center justify-between">
             <label className="text-sm text-text font-medium">Font</label>
-            <Select
+            <FontPicker
               value={editorFontSettings.baseFontFamily}
-              onChange={(e) =>
-                handleFontFamilyChange(e.target.value as FontFamily)
-              }
-              className="w-40"
-            >
-              {fontFamilyOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </Select>
-          </div>
-
-          {/* Custom font picker (shown when Font = Custom) */}
-          {editorFontSettings.baseFontFamily === "custom" && (
-            <CustomFontPicker
-              selected={editorFontSettings.customFontFamily}
-              onSelect={(family) =>
-                setEditorFontSetting("customFontFamily", family)
-              }
+              customFamily={editorFontSettings.customFontFamily}
+              onSelectPreset={handleFontFamilyChange}
+              onSelectCustom={(family) => {
+                setEditorFontSetting("baseFontFamily", "custom");
+                setEditorFontSetting("customFontFamily", family);
+              }}
             />
-          )}
+          </div>
 
           {/* Base Font Size */}
           <div className="flex items-center justify-between">
@@ -495,18 +481,31 @@ export function AppearanceSettingsSection() {
 // Module-level cache so the OS fonts are only enumerated once per session
 let systemFontsCache: string[] | null = null;
 
-// Searchable list of installed OS fonts for the custom editor font.
-// Each row renders its own name in that font, doubling as a preview.
-function CustomFontPicker({
-  selected,
-  onSelect,
+// A single compact control for choosing the editor font: presets plus every
+// font installed on the OS, behind a searchable popover.
+function FontPicker({
+  value,
+  customFamily,
+  onSelectPreset,
+  onSelectCustom,
 }: {
-  selected: string;
-  onSelect: (family: string) => void;
+  value: FontFamily;
+  customFamily: string;
+  onSelectPreset: (family: FontFamily) => void;
+  onSelectCustom: (family: string) => void;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
   const [fonts, setFonts] = useState<string[] | null>(systemFontsCache);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const isCustom = value === "custom";
+  const selectedLabel = isCustom
+    ? customFamily || "Custom"
+    : (fontPresets.find((p) => p.value === value)?.label ?? "Sans");
 
   const load = useCallback(async () => {
     setError(null);
@@ -524,63 +523,142 @@ function CustomFontPicker({
     }
   }, []);
 
+  // Enumerate OS fonts lazily, the first time the popover is opened
   useEffect(() => {
-    load();
-  }, [load]);
+    if (isOpen && fonts === null && !error) load();
+  }, [isOpen, fonts, error, load]);
+
+  // Focus the search field on open
+  useEffect(() => {
+    if (isOpen) searchRef.current?.focus();
+  }, [isOpen]);
+
+  // Close on outside click or Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (popoverRef.current?.contains(target)) return;
+      if (triggerRef.current?.contains(target)) return;
+      setIsOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsOpen(false);
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isOpen]);
 
   const normalized = query.trim().toLowerCase();
   const filtered =
     fonts?.filter((f) => f.toLowerCase().includes(normalized)) ?? [];
+  const matchingPresets = fontPresets.filter(
+    (p) => !normalized || p.label.toLowerCase().includes(normalized),
+  );
+
+  const rowClass = (active: boolean) =>
+    cn(
+      "w-full text-left px-2.5 py-1.5 text-sm flex items-center justify-between gap-2 rounded-md hover:bg-bg-muted transition-colors cursor-pointer",
+      active && "bg-bg-muted",
+    );
 
   return (
-    <div className="rounded-[10px] border border-border bg-bg-secondary p-2.5 space-y-2">
-      <div className="relative">
-        <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-        <Input
-          type="text"
-          placeholder="Search installed fonts..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="w-full h-9 pl-9"
-        />
-      </div>
-      {error ? (
-        <div className="flex items-center justify-between px-1 py-1">
-          <span className="text-sm text-text-muted">{error}</span>
-          <Button variant="outline" size="sm" onClick={load}>
-            Retry
-          </Button>
-        </div>
-      ) : fonts === null ? (
-        <div className="flex items-center gap-2 p-2">
-          <SpinnerIcon className="w-4 h-4 animate-spin text-text-muted" />
-          <span className="text-sm text-text-muted">
-            Loading installed fonts...
-          </span>
-        </div>
-      ) : filtered.length === 0 ? (
-        <p className="text-sm text-text-muted p-2">
-          No fonts match "{query}"
-        </p>
-      ) : (
-        <div className="max-h-56 overflow-y-auto rounded-md border border-border divide-y divide-border">
-          {filtered.map((family) => (
-            <button
-              key={family}
-              type="button"
-              onClick={() => onSelect(family)}
-              className={cn(
-                "w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 hover:bg-bg-muted transition-colors cursor-pointer",
-                selected === family && "bg-bg-muted",
-              )}
-              style={{ fontFamily: fontFamilyStackFor("custom", family) }}
-            >
-              <span className="truncate">{family}</span>
-              {selected === family && (
-                <CheckIcon className="w-3.5 h-3.5 shrink-0 stroke-[2.2]" />
-              )}
-            </button>
-          ))}
+    <div className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setIsOpen((open) => !open)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        className={cn(
+          "flex h-9 w-40 items-center justify-between rounded-md border bg-bg px-3 text-sm text-text transition-colors cursor-pointer",
+          isOpen
+            ? "border-accent"
+            : "border-border hover:border-text-muted",
+        )}
+      >
+        <span className="truncate">{selectedLabel}</span>
+        <ChevronDownIcon className="w-4 h-4 stroke-[1.7] text-text-muted shrink-0" />
+      </button>
+
+      {isOpen && (
+        <div
+          ref={popoverRef}
+          className="absolute right-0 top-10 z-50 w-60 rounded-lg border border-border bg-bg shadow-lg p-1.5"
+        >
+          <div className="relative">
+            <SearchIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+            <Input
+              ref={searchRef}
+              type="text"
+              placeholder="Search fonts..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="w-full h-8 pl-8 text-sm"
+            />
+          </div>
+
+          <div className="mt-1.5 max-h-64 overflow-y-auto">
+            {matchingPresets.map((preset) => (
+              <button
+                key={preset.value}
+                type="button"
+                onClick={() => {
+                  onSelectPreset(preset.value);
+                  setIsOpen(false);
+                }}
+                className={rowClass(value === preset.value)}
+              >
+                <span>{preset.label}</span>
+                {value === preset.value && (
+                  <CheckIcon className="w-3.5 h-3.5 shrink-0 stroke-[2.2]" />
+                )}
+              </button>
+            ))}
+
+            <div className="px-2.5 pt-2 pb-1 text-xs font-medium text-text-muted">
+              Installed
+            </div>
+            {error ? (
+              <div className="flex items-center justify-between px-2.5 py-1">
+                <span className="text-sm text-text-muted">{error}</span>
+                <Button variant="outline" size="sm" onClick={load}>
+                  Retry
+                </Button>
+              </div>
+            ) : fonts === null ? (
+              <div className="flex items-center gap-2 px-2.5 py-2">
+                <SpinnerIcon className="w-4 h-4 animate-spin text-text-muted" />
+                <span className="text-sm text-text-muted">Loading fonts...</span>
+              </div>
+            ) : filtered.length === 0 ? (
+              <p className="text-sm text-text-muted px-2.5 py-2">
+                No fonts match "{query}"
+              </p>
+            ) : (
+              filtered.map((family) => (
+                <button
+                  key={family}
+                  type="button"
+                  onClick={() => {
+                    onSelectCustom(family);
+                    setIsOpen(false);
+                  }}
+                  className={rowClass(isCustom && customFamily === family)}
+                  style={{ fontFamily: fontFamilyStackFor("custom", family) }}
+                >
+                  <span className="truncate">{family}</span>
+                  {isCustom && customFamily === family && (
+                    <CheckIcon className="w-3.5 h-3.5 shrink-0 stroke-[2.2]" />
+                  )}
+                </button>
+              ))
+            )}
+          </div>
         </div>
       )}
     </div>
