@@ -54,8 +54,8 @@
   --color-syntax-operator: #d73a49;
   --color-syntax-attr: #005cc5;
 
-  /* Inline code color */
-  --color-code: #d73a49;
+  /* Inline code color - follows the accent color */
+  --color-code: var(--color-accent);
 }
 
 /* Theme color tokens - Dark mode */
@@ -86,8 +86,8 @@
   --color-syntax-operator: #ea4a5a;
   --color-syntax-attr: #79b8ff;
 
-  /* Inline code color */
-  --color-code: #ea4a5a;
+  /* Inline code color - follows the accent color */
+  --color-code: var(--color-accent);
 }
 
 /* Register theme colors with Tailwind */
