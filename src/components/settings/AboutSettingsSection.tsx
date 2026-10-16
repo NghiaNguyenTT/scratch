@@ -74,8 +74,8 @@ export function AboutSettingsSection() {
         <p className="text-sm text-text-muted mb-4">
           Scratch is a minimalist markdown scratchpad for capturing quick
           thoughts, todos, and ideas. We're offline-first, keyboard-optimized,
-          AI-compatible, and open source with no cloud, no accounts, and no
-          subscriptions. Learn more on{" "}
+          and open source with no cloud, no accounts, and no subscriptions.
+          Learn more on{" "}
           <button
             onClick={() => handleOpenUrl("https://www.ericli.io/scratch")}
             className="text-text-muted border-b border-text-muted/50 hover:text-text hover:border-text cursor-pointer transition-colors"

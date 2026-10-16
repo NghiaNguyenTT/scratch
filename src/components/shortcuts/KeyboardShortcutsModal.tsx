@@ -8,7 +8,7 @@ const modalCategories = shortcutCategories.filter(
 
 function KeyboardKey({ keyLabel }: { keyLabel: string }) {
   return (
-    <kbd className="text-xs px-1.5 py-0.5 rounded-md bg-bg-muted text-text min-w-6.5 inline-flex items-center justify-center">
+    <kbd className="text-xs px-1.5 py-0.5 rounded-full bg-bg-muted text-text min-w-6.5 inline-flex items-center justify-center">
       {keyLabel}
     </kbd>
   );
@@ -105,7 +105,7 @@ export function KeyboardShortcutsModal({
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-4xl max-h-[85vh] mx-4 bg-bg rounded-xl shadow-2xl border border-border animate-slide-down overflow-hidden flex flex-col">
+      <div className="relative w-full max-w-4xl max-h-[85vh] mx-4 bg-bg rounded-lg shadow-2xl border border-border animate-slide-down overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between pl-5 pr-3 py-3 border-b border-border flex-none">
           <h2
@@ -117,7 +117,7 @@ export function KeyboardShortcutsModal({
           <button
             onClick={onClose}
             aria-label="Close"
-            className="p-1 rounded-md text-text-muted hover:text-text hover:bg-bg-muted transition-colors"
+            className="p-1 rounded-lg text-text-muted hover:text-text hover:bg-bg-muted transition-colors"
           >
             <XIcon className="w-4.5 h-4.5" />
           </button>

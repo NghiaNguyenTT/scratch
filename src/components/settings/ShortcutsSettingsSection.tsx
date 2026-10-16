@@ -3,7 +3,7 @@ import { shortcutCategories } from "../../lib/shortcuts";
 // Render individual key as keyboard button
 function KeyboardKey({ keyLabel }: { keyLabel: string }) {
   return (
-    <kbd className="text-xs px-1.5 py-0.5 rounded-md bg-bg-muted text-text min-w-6.5 inline-flex items-center justify-center">
+    <kbd className="text-xs px-1.5 py-0.5 rounded-full bg-bg-muted text-text min-w-6.5 inline-flex items-center justify-center">
       {keyLabel}
     </kbd>
   );

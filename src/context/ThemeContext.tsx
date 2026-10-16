@@ -69,29 +69,31 @@ const defaultEditorFontSettings: Required<EditorFontSettings> = {
   customFontFamily: "",
 };
 
-// Default theme colors (must match App.css :root / .dark values)
+// Default theme colors — sRGB equivalents of the shadcn "neutral" tokens in
+// App.css :root / .dark. Values are plain hex/rgba because ColorPicker parses
+// them directly; keep the two definitions in sync when either changes.
 const defaultThemeColors: Record<"light" | "dark", Record<ThemeColorKey, string>> = {
   light: {
     bg: "#ffffff",
-    "bg-secondary": "#fafaf9",
-    "bg-muted": "rgba(28, 25, 23, 0.06)",
-    "bg-emphasis": "rgba(28, 25, 23, 0.09)",
-    text: "#1c1917",
-    "text-muted": "#78716c",
-    border: "rgba(28, 25, 23, 0.08)",
-    accent: "#1c1917",
-    selection: "rgba(250, 204, 21, 0.4)",
+    "bg-secondary": "#fafafa",
+    "bg-muted": "#f5f5f5",
+    "bg-emphasis": "#ebebeb",
+    text: "#0a0a0a",
+    "text-muted": "#737373",
+    border: "#e5e5e5",
+    accent: "#171717",
+    selection: "rgba(10, 10, 10, 0.15)",
   },
   dark: {
-    bg: "rgb(22, 20, 19)",
-    "bg-secondary": "rgb(14, 12, 11)",
-    "bg-muted": "rgba(250, 249, 249, 0.05)",
-    "bg-emphasis": "rgba(250, 249, 249, 0.08)",
-    text: "#fafaf9",
-    "text-muted": "#a8a29e",
-    border: "rgba(250, 249, 249, 0.07)",
-    accent: "#fafaf9",
-    selection: "rgba(253, 224, 71, 0.35)",
+    bg: "#0a0a0a",
+    "bg-secondary": "#171717",
+    "bg-muted": "#262626",
+    "bg-emphasis": "#333333",
+    text: "#fafafa",
+    "text-muted": "#a1a1a1",
+    border: "rgba(255, 255, 255, 0.1)",
+    accent: "#e5e5e5",
+    selection: "rgba(250, 250, 250, 0.2)",
   },
 };
 

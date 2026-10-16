@@ -137,18 +137,19 @@ export function AppearanceSettingsSection() {
       {/* Theme Section */}
       <section className="pb-2">
         <h2 className="text-xl font-medium mb-3">Theme</h2>
-        <div className="flex gap-2 p-1 rounded-[10px] border border-border">
-          {(["light", "dark", "system"] as const).map((mode) => (
-            <Button
-              key={mode}
-              onClick={() => setTheme(mode)}
-              variant={theme === mode ? "primary" : "ghost"}
-              size="md"
-              className="flex-1"
-            >
-              {mode.charAt(0).toUpperCase() + mode.slice(1)}
-            </Button>
-          ))}
+        <div className="flex items-center justify-between">
+          <label className="text-sm text-text font-medium">Mode</label>
+          <Select
+            value={theme}
+            onChange={(e) =>
+              setTheme(e.target.value as "light" | "dark" | "system")
+            }
+            className="w-40"
+          >
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="system">System</option>
+          </Select>
         </div>
         {theme === "system" && (
           <p className="mt-3 text-sm text-text-muted">
@@ -205,7 +206,7 @@ export function AppearanceSettingsSection() {
           )}
         </div>
 
-        <div className="rounded-[10px] border border-border pl-4 py-3 pr-3 space-y-2">
+        <div className="rounded-lg border border-border pl-4 py-3 pr-3 space-y-2">
           {/* Font Family */}
           <div className="flex items-center justify-between">
             <label className="text-sm text-text font-medium">Font</label>
@@ -372,7 +373,7 @@ export function AppearanceSettingsSection() {
             <EyeIcon className="w-4.5 h-4.5 stroke-[1.5]" />
             <span>Preview</span>
           </div>
-          <div className="border border-border rounded-[10px] bg-bg p-6 pt-20 max-h-160 overflow-hidden rounded-t-lg">
+          <div className="border border-border rounded-lg bg-bg p-6 pt-20 max-h-160 overflow-hidden">
             <div
               className="prose prose-lg dark:prose-invert max-w-xl mx-auto"
               dir={textDirection}
@@ -562,7 +563,7 @@ function FontPicker({
 
   const rowClass = (active: boolean) =>
     cn(
-      "w-full text-left px-2.5 py-1.5 text-sm flex items-center justify-between gap-2 rounded-md hover:bg-bg-muted transition-colors cursor-pointer",
+      "w-full text-left px-2.5 py-1.5 text-sm flex items-center justify-between gap-2 rounded-sm hover:bg-bg-muted transition-colors cursor-pointer",
       active && "bg-bg-muted",
     );
 
@@ -575,7 +576,7 @@ function FontPicker({
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         className={cn(
-          "flex h-9 w-40 items-center justify-between rounded-md border bg-bg px-3 text-sm text-text transition-colors cursor-pointer",
+          "flex h-9 w-40 items-center justify-between rounded-lg border bg-bg px-3 text-sm text-text transition-colors cursor-pointer",
           isOpen
             ? "border-accent"
             : "border-border hover:border-text-muted",
@@ -709,7 +710,7 @@ function ColorsExpandable({
           </Button>
         )}
       </summary>
-      <div className="mt-2 rounded-[10px] border border-border pl-4 py-3 pr-3 space-y-1.5">
+      <div className="mt-2 rounded-lg border border-border pl-4 py-3 pr-3 space-y-1.5">
         {(() => {
           let lastGroup = "";
           return colorLabels.map(({ key, label: colorLabel, group }) => {

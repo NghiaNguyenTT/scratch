@@ -122,7 +122,7 @@ export function ExportPdfModal({
       onClick={() => !isExporting && onClose()}
     >
       <div
-        className="w-full max-w-md bg-bg rounded-xl shadow-2xl overflow-hidden border border-border animate-slide-down"
+        className="w-full max-w-md bg-bg rounded-lg shadow-2xl overflow-hidden border border-border animate-slide-down"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-border flex items-center gap-3 px-4.5 py-3.5">
@@ -137,7 +137,7 @@ export function ExportPdfModal({
             {noteTitle}
           </div>
 
-          <div className="rounded-[10px] border border-border pl-4 py-3 pr-3 space-y-2">
+          <div className="rounded-lg border border-border pl-4 py-3 pr-3 space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-sm text-text font-medium">Paper</label>
               <Select
@@ -238,7 +238,7 @@ export function ExportPdfModal({
 
           <div className="flex items-center justify-between pt-1">
             <div className="flex items-center gap-1.5 text-sm text-text-muted">
-              <kbd className="text-xs px-1.5 py-0.5 rounded-md bg-bg-muted text-text-muted">
+              <kbd className="text-xs px-1.5 py-0.5 rounded-full bg-bg-muted text-text-muted">
                 Esc
               </kbd>
               <span>to cancel</span>

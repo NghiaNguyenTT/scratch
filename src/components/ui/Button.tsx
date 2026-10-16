@@ -15,13 +15,14 @@ const buttonSizes = {
   xl: "h-10 px-5", // 40px
 };
 
+// Buttons are pills; the `link` variant is plain text and stays unrounded.
 const buttonVariants = {
-  primary: "bg-accent text-text-inverse hover:bg-accent/90 rounded-md",
-  default: "bg-bg-muted text-text hover:bg-bg-emphasis rounded-md",
-  secondary: "bg-bg-muted text-text hover:bg-bg-emphasis rounded-md",
-  ghost: "hover:bg-bg-muted text-text-muted hover:text-text rounded-md",
+  primary: "bg-accent text-text-inverse hover:bg-accent/90 rounded-full",
+  default: "bg-bg-muted text-text hover:bg-bg-emphasis rounded-full",
+  secondary: "bg-bg-muted text-text hover:bg-bg-emphasis rounded-full",
+  ghost: "hover:bg-bg-muted text-text-muted hover:text-text rounded-full",
   outline:
-    "border border-border bg-transparent hover:bg-bg-muted text-text rounded-md",
+    "border border-border bg-transparent hover:bg-bg-muted text-text rounded-full",
   link: "text-text-muted hover:text-text underline-offset-4 hover:underline",
 };
 

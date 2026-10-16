@@ -155,7 +155,7 @@ const FileItem = memo(function FileItem({
           }}
           {...attributes}
           {...listeners}
-          className={`flex items-center gap-1.5 py-1.5 cursor-pointer rounded-md select-none transition-colors ${
+          className={`flex items-center gap-1.5 py-1.5 cursor-pointer rounded-sm select-none transition-colors ${
             isDragging
               ? "opacity-40"
               : isOver
@@ -183,7 +183,7 @@ const FileItem = memo(function FileItem({
         </div>
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content className="min-w-44 bg-bg border border-border rounded-md shadow-lg py-1 z-50">
+        <ContextMenu.Content className="min-w-44 bg-bg border border-border rounded-lg shadow-lg py-1 z-50">
           <ContextMenu.Item className={menuItemClass} onSelect={handlePin}>
             <PinIcon className="w-4 h-4 stroke-[1.6]" />
             {isPinned ? "Unpin" : "Pin"}
@@ -325,7 +325,7 @@ const FolderItemComponent = memo(function FolderItem({
         >
           <div
             ref={setDropRef}
-            className={`flex items-center gap-1.5 py-1.5 cursor-pointer rounded-md select-none transition-colors ${
+            className={`flex items-center gap-1.5 py-1.5 cursor-pointer rounded-sm select-none transition-colors ${
               isOver
                 ? "bg-accent/10 ring-1 ring-accent"
                 : isFocused
@@ -403,7 +403,7 @@ const FolderItemComponent = memo(function FolderItem({
         </div>
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content className="min-w-44 bg-bg border border-border rounded-md shadow-lg py-1 z-50">
+        <ContextMenu.Content className="min-w-44 bg-bg border border-border rounded-lg shadow-lg py-1 z-50">
           <ContextMenu.Item
             className={menuItemClass}
             onSelect={() => onCreateNoteHere(folder.path)}

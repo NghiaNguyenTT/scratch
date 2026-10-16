@@ -16,8 +16,8 @@ Everything from upstream Scratch, plus:
 - **Hover page preview** — hover a `[[wikilink]]` to preview the target note in a floating read-only popup, rendered with the same engine as the editor (math, mermaid, tables, code). Links inside a preview preview too, stacking up to 3 levels deep — like Obsidian's page previews. Click a link inside a preview to navigate; `Esc` closes the topmost popup.
 - **PDF export with bookmarks** — `Ctrl/Cmd+Shift+P` opens an export dialog with paper size, orientation, margins, font size, and page-number options. The note renders in a dedicated print window (custom font and theme respected), headings become a clickable bookmark outline in the PDF sidebar, and tables/images paginate cleanly instead of being sliced across pages. Non-Windows falls back to the browser print dialog.
 - **In-app updates from this fork** — the updater checks this fork's GitHub releases (signed with the fork's own key). See [Releasing an update](#releasing-an-update).
-- **Custom editor font** — pick any font installed on your system: Settings → Appearance → Typography → Font → Custom, with a searchable list that previews each font in itself. Falls back gracefully for missing glyphs.
-- **Windows AI-provider detection fixes** — Codex and OpenCode are now found even when they aren't on `PATH`: the Codex Windows app (which ships `codex.exe` under `%LOCALAPPDATA%\OpenAI\Codex\bin\`) and OpenCode's `~/.opencode/bin` install location are probed directly.
+- **Custom editor font** — pick any font installed on your system: Settings → Appearance → Typography → Font. One compact picker with search, `Sans` / `Serif` / `Mono` presets, and an installed-fonts list that previews each font in itself. Falls back gracefully for missing glyphs.
+- **Pure text editor — no built-in AI** — all AI features were removed in v1.2.0. Notes are plain `.md` files, so an external agent (or your own editor) can write them directly; Scratch reloads them when they change on disk.
 
 ## Features
 
@@ -34,8 +34,8 @@ Everything from upstream Scratch, plus:
 - **Wikilinks** - Type `[[` to link between notes with autocomplete
 - **Slash commands** - Type `/` to quickly insert headings, lists, code blocks, diagrams, and more
 - **Focus mode** - Distraction-free writing with animated sidebar/toolbar fade (`Cmd+Shift+Enter`)
-- **Edit with Claude Code, OpenAI Codex, OpenCode, or Ollama** - Use your local CLI to edit notes with AI (including fully offline via Ollama)
-- **Works with other AI agents** - Detects external file changes
+- **No built-in AI** - A plain markdown editor. Notes are plain `.md` files, so any external tool or agent can edit them directly
+- **External change detection** - Picks up edits made outside the app and reloads the note
 - **Folders** - Opt-in collapsible folder tree with drag-and-drop to organize notes
 - **Keyboard optimized** - Lots of shortcuts and a command palette
 - **Customizable** - Theme, typography, page width, and RTL text direction

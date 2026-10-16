@@ -13,7 +13,6 @@ import { useNotes } from "../../context/NotesContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useGit } from "../../context/GitContext";
 import * as notesService from "../../services/notes";
-import * as aiService from "../../services/ai";
 import { downloadPdf, downloadMarkdown } from "../../services/pdf";
 import type { Settings } from "../../types/note";
 import type { Editor } from "@tiptap/react";
@@ -41,19 +40,14 @@ import {
   AddNoteIcon,
   TrashIcon,
   PinIcon,
-  ClaudeIcon,
   ZenIcon,
   MarkdownIcon,
-  CodexIcon,
-  OpenCodeIcon,
-  OllamaIcon,
   FolderIcon,
   FolderPlusIcon,
   KeyboardIcon,
   GraphIcon,
 } from "../icons";
 import { mod, shift } from "../../lib/platform";
-import type { AiProvider } from "../../services/ai";
 
 interface Command {
   id: string;
@@ -69,7 +63,6 @@ interface CommandPaletteProps {
   onOpenSettings?: () => void;
   onOpenGraphView?: () => void;
   onOpenShortcuts?: () => void;
-  onOpenAiModal?: (provider: AiProvider) => void;
   onExportPdf?: () => void;
   focusMode?: boolean;
   onToggleFocusMode?: () => void;
@@ -82,7 +75,6 @@ export function CommandPalette({
   onOpenSettings,
   onOpenGraphView,
   onOpenShortcuts,
-  onOpenAiModal,
   onExportPdf,
   focusMode,
   onToggleFocusMode,
@@ -109,9 +101,6 @@ export function CommandPalette({
     { id: string; title: string; preview: string; modified: number }[]
   >([]);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [availableAiProviders, setAvailableAiProviders] = useState<
-    AiProvider[]
-  >([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -120,32 +109,6 @@ export function CommandPalette({
     if (open) {
       notesService.getSettings().then(setSettings);
     }
-  }, [open, currentNote?.id]);
-
-  useEffect(() => {
-    if (!open || !currentNote) {
-      setAvailableAiProviders([]);
-      return;
-    }
-
-    let active = true;
-    aiService
-      .getAvailableAiProviders()
-      .then((providers) => {
-        if (active) {
-          setAvailableAiProviders(providers);
-        }
-      })
-      .catch((error) => {
-        if (active) {
-          console.error("Failed to discover AI providers:", error);
-          setAvailableAiProviders([]);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
   }, [open, currentNote?.id]);
 
   // Memoize commands array
@@ -177,50 +140,6 @@ export function CommandPalette({
     if (currentNote) {
       const isPinned =
         settings?.pinnedNoteIds?.includes(currentNote.id) || false;
-      const aiCommands: Command[] = onOpenAiModal
-        ? availableAiProviders.map((provider) => {
-            const action = () => {
-              onOpenAiModal(provider);
-              onClose();
-            };
-
-            if (provider === "codex") {
-              return {
-                id: "ai-edit-codex",
-                label: "Edit with OpenAI Codex",
-                icon: <CodexIcon className="w-4.5 h-4.5 fill-text-muted" />,
-                action,
-              };
-            }
-
-            if (provider === "opencode") {
-              return {
-                id: "ai-edit-opencode",
-                label: "Edit with OpenCode",
-                icon: (
-                  <OpenCodeIcon className="w-4.5 h-4.5 fill-text-muted" />
-                ),
-                action,
-              };
-            }
-
-            if (provider === "ollama") {
-              return {
-                id: "ai-edit-ollama",
-                label: "Edit with Ollama",
-                icon: <OllamaIcon className="w-4.5 h-4.5 fill-text-muted" />,
-                action,
-              };
-            }
-
-            return {
-              id: "ai-edit-claude",
-              label: "Edit with Claude Code",
-              icon: <ClaudeIcon className="w-4.5 h-4.5 fill-text-muted" />,
-              action,
-            };
-          })
-        : [];
 
       baseCommands.push(
         {
@@ -241,7 +160,6 @@ export function CommandPalette({
             }
           },
         },
-        ...aiCommands,
         {
           id: "duplicate-note",
           label: "Duplicate Current Note",
@@ -537,8 +455,6 @@ export function CommandPalette({
     onClose,
     onOpenSettings,
     onOpenGraphView,
-    onOpenAiModal,
-    availableAiProviders,
     setTheme,
     gitEnabled,
     gitAvailable,
@@ -711,7 +627,7 @@ export function CommandPalette({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center py-11 px-4 pointer-events-none">
       {/* Palette */}
-      <div className="relative w-full h-full max-h-108 max-w-2xl bg-bg rounded-xl shadow-2xl overflow-hidden border border-border animate-slide-down flex flex-col pointer-events-auto">
+      <div className="relative w-full h-full max-h-108 max-w-2xl bg-bg rounded-lg shadow-2xl overflow-hidden border border-border animate-slide-down flex flex-col pointer-events-auto">
         {/* Search input */}
         <div className="border-b border-border flex-none">
           <input

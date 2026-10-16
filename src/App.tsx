@@ -3,8 +3,6 @@ import { toast } from "sonner";
 import { NotesProvider, useNotes } from "./context/NotesContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
-import type { Settings } from "./types/note";
 import { GitProvider } from "./context/GitContext";
 import { TooltipProvider, Toaster } from "./components/ui";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -20,15 +18,7 @@ const GraphView = lazy(() =>
   import("./components/graph/GraphView").then((m) => ({ default: m.GraphView })),
 );
 import { SettingsPage } from "./components/settings";
-import {
-  SpinnerIcon,
-  ClaudeIcon,
-  CodexIcon,
-  OpenCodeIcon,
-  OllamaIcon,
-} from "./components/icons";
-import { AiEditModal } from "./components/ai/AiEditModal";
-import { AiResponseToast } from "./components/ai/AiResponseToast";
+import { SpinnerIcon } from "./components/icons";
 import { ExportPdfModal } from "./components/export/ExportPdfModal";
 import { KeyboardShortcutsModal } from "./components/shortcuts/KeyboardShortcutsModal";
 import { PreviewApp } from "./components/preview/PreviewApp";
@@ -38,8 +28,6 @@ import {
   type Update,
 } from "@tauri-apps/plugin-updater";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import * as aiService from "./services/ai";
-import type { AiProvider } from "./services/ai";
 import { isMac, isWindows } from "./lib/platform";
 
 // Detect preview mode from URL search params
@@ -81,16 +69,9 @@ function AppContent() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [view, setView] = useState<ViewState>("notes");
   const [sidebarVisible, setSidebarVisible] = useState(true);
-  const [aiModalOpen, setAiModalOpen] = useState(false);
-  // Pre-filled prompt + provenance for the AI modal (command palette vs
-  // editor context menu — "back" only reopens the palette for the former)
-  const [aiModalInitialPrompt, setAiModalInitialPrompt] = useState("");
-  const [aiModalFromMenu, setAiModalFromMenu] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [exportPdfOpen, setExportPdfOpen] = useState(false);
-  const [aiEditing, setAiEditing] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
-  const [aiProvider, setAiProvider] = useState<AiProvider>("claude");
   const editorRef = useRef<TiptapEditor | null>(null);
 
   // Listen for set-notes-folder event from CLI (scratch .)
@@ -147,92 +128,6 @@ function AppContent() {
   const openGraphView = useCallback(() => {
     setView("graph");
   }, []);
-
-  // Open the AI modal pre-filled from the editor context menu
-  const handleOpenAiModalFromMenu = useCallback((initialPrompt: string) => {
-    setAiModalInitialPrompt(initialPrompt);
-    setAiModalFromMenu(true);
-    setAiModalOpen(true);
-  }, []);
-
-  // Open the AI modal from the command palette
-  const handleOpenAiModalFromPalette = useCallback((provider: AiProvider) => {
-    setAiProvider(provider);
-    setAiModalInitialPrompt("");
-    setAiModalFromMenu(false);
-    setAiModalOpen(true);
-  }, []);
-
-  // AI Edit handler
-  const handleAiEdit = useCallback(
-    async (prompt: string, ollamaModel?: string) => {
-      if (!currentNote) {
-        toast.error("No note selected");
-        return;
-      }
-
-      setAiEditing(true);
-
-      try {
-        let result: aiService.AiExecutionResult;
-        if (aiProvider === "codex") {
-          result = await aiService.executeCodexEdit(currentNote.path, prompt);
-        } else if (aiProvider === "opencode") {
-          result = await aiService.executeOpenCodeEdit(currentNote.path, prompt);
-        } else if (aiProvider === "ollama") {
-          // Context-menu runs don't go through the modal, so no model is
-          // passed — fall back to the persisted Ollama model
-          let model = ollamaModel;
-          if (!model) {
-            try {
-              const settings = await invoke<Settings>("get_settings");
-              model = settings.ollamaModel || "qwen3:8b";
-            } catch {
-              model = "qwen3:8b";
-            }
-          }
-          result = await aiService.executeOllamaEdit(currentNote.path, prompt, model);
-        } else {
-          result = await aiService.executeClaudeEdit(currentNote.path, prompt);
-        }
-
-        // Reload the current note from disk
-        await reloadCurrentNote();
-
-        // Show results
-        if (result.success) {
-          // Close modal after success
-          setAiModalOpen(false);
-
-          // Show success toast with provider response
-          toast(
-            <AiResponseToast output={result.output} provider={aiProvider} />,
-            {
-              duration: Infinity,
-              closeButton: true,
-              className: "!min-w-[450px] !max-w-[600px]",
-            },
-          );
-        } else {
-          toast.error(
-            <div className="space-y-1">
-              <div className="font-medium">AI Edit Failed</div>
-              <div className="text-xs">{result.error || "Unknown error"}</div>
-            </div>,
-            { duration: Infinity, closeButton: true },
-          );
-        }
-      } catch (error) {
-        console.error("[AI] Error:", error);
-        toast.error(
-          `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
-        );
-      } finally {
-        setAiEditing(false);
-      }
-    },
-    [aiProvider, currentNote, reloadCurrentNote],
-  );
 
   // Memoize display items to prevent unnecessary recalculations
   const displayItems = useMemo(() => {
@@ -563,23 +458,16 @@ function AppContent() {
               onEditorReady={(editor) => {
                 editorRef.current = editor;
               }}
-              aiProvider={aiProvider}
-              onSelectAiProvider={setAiProvider}
-              onRunAiPrompt={(prompt) => handleAiEdit(prompt)}
-              onOpenAiPromptModal={handleOpenAiModalFromMenu}
             />
           </>
         )}
       </div>
 
-      {/* Shared backdrop for command palette and AI modal */}
-      {(paletteOpen || aiModalOpen) && (
+      {/* Shared backdrop for the command palette */}
+      {paletteOpen && (
         <div
           className="fixed inset-0 bg-text/50 backdrop-blur-sm z-40 animate-fade-in"
-          onClick={() => {
-            if (paletteOpen) handleClosePalette();
-            if (aiModalOpen) setAiModalOpen(false);
-          }}
+          onClick={handleClosePalette}
         />
       )}
 
@@ -594,22 +482,10 @@ function AppContent() {
         onOpenSettings={toggleSettings}
         onOpenGraphView={openGraphView}
         onOpenShortcuts={() => setShortcutsOpen(true)}
-        onOpenAiModal={handleOpenAiModalFromPalette}
         onExportPdf={() => setExportPdfOpen(true)}
         focusMode={focusMode}
         onToggleFocusMode={toggleFocusMode}
         editorRef={editorRef}
-      />
-      <AiEditModal
-        open={aiModalOpen}
-        provider={aiProvider}
-        onBack={() => {
-          setAiModalOpen(false);
-          if (!aiModalFromMenu) setPaletteOpen(true);
-        }}
-        onExecute={handleAiEdit}
-        isExecuting={aiEditing}
-        initialPrompt={aiModalInitialPrompt}
       />
       <ExportPdfModal
         open={exportPdfOpen && !!currentNote}
@@ -617,50 +493,6 @@ function AppContent() {
         filePath={currentNote?.path ?? ""}
         noteTitle={currentNote?.title ?? "note"}
       />
-
-      {/* AI Editing Overlay — glass card with ambient glow, ping rings,
-          shimmer text and an indeterminate progress bar */}
-      {aiEditing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden select-none">
-          <div className="absolute inset-0 bg-bg/55 backdrop-blur-md animate-in fade-in duration-300" />
-          <div className="ai-glow ai-glow-a" />
-          <div className="ai-glow ai-glow-b" />
-          <div className="relative flex flex-col items-center gap-6 px-14 py-10 rounded-2xl border border-border bg-bg/75 backdrop-blur-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-300">
-            <div className="relative flex items-center justify-center w-16 h-16">
-              <span className="absolute inset-0 rounded-full border border-[var(--color-selection)] opacity-80 animate-ping" />
-              <span className="absolute inset-1.5 rounded-full border border-[var(--color-selection)] opacity-50 animate-ping [animation-delay:450ms]" />
-              {aiProvider === "codex" ? (
-                <CodexIcon className="w-9 h-9 fill-text animate-pulse-gentle" />
-              ) : aiProvider === "opencode" ? (
-                <OpenCodeIcon className="w-9 h-9 fill-text animate-pulse-gentle" />
-              ) : aiProvider === "ollama" ? (
-                <OllamaIcon className="w-9 h-9 fill-text animate-pulse-gentle" />
-              ) : (
-                <ClaudeIcon className="w-9 h-9 fill-text animate-pulse-gentle" />
-              )}
-            </div>
-            <div className="flex flex-col items-center gap-1.5">
-              <div className="ai-shimmer-text text-base font-medium">
-                {aiProvider === "codex"
-                  ? "Codex is editing your note…"
-                  : aiProvider === "opencode"
-                    ? "OpenCode is editing your note…"
-                    : aiProvider === "ollama"
-                      ? "Ollama is editing your note…"
-                      : "Claude is editing your note…"}
-              </div>
-              {currentNote && (
-                <div className="text-xs text-text-muted max-w-[280px] truncate">
-                  {currentNote.title}
-                </div>
-              )}
-            </div>
-            <div className="w-64 h-1 rounded-full bg-bg-muted overflow-hidden">
-              <div className="ai-progress-bar" />
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }
@@ -733,7 +565,7 @@ function UpdateToast({
       <button
         onClick={handleUpdate}
         disabled={installing}
-        className="self-start mt-1 text-xs font-medium px-3 py-1.5 rounded-md bg-text text-bg hover:opacity-90 disabled:opacity-50 transition-opacity"
+        className="self-start mt-1 text-xs font-medium px-3 py-1.5 rounded-full bg-text text-bg hover:opacity-90 disabled:opacity-50 transition-opacity"
       >
         {installing ? "Installing..." : "Update Now"}
       </button>

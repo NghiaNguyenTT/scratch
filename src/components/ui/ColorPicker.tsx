@@ -165,7 +165,7 @@ export function ColorPicker({
         ref={swatchRef}
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "w-6.5 h-6.5 rounded-md border transition-colors cursor-pointer",
+          "w-6.5 h-6.5 rounded-lg border transition-colors cursor-pointer",
           isOpen ? "border-accent" : "border-border hover:border-text-muted",
         )}
         style={{ backgroundColor: color }}
@@ -186,7 +186,7 @@ export function ColorPicker({
                 type="text"
                 value={hexDraft}
                 onChange={handleHexInput}
-                className="w-full h-8 rounded-md border border-border bg-bg pl-5 pr-2 text-sm text-text font-mono uppercase focus:outline-none focus:border-accent"
+                className="w-full h-8 rounded-lg border border-border bg-bg pl-5 pr-2 text-sm text-text font-mono uppercase focus:outline-none focus:border-accent"
                 maxLength={6}
                 spellCheck={false}
               />
@@ -198,7 +198,7 @@ export function ColorPicker({
                 max="100"
                 value={Math.round(parsed.a * 100)}
                 onChange={handleOpacityInput}
-                className="w-full h-8 rounded-md border border-border bg-bg pl-2 pr-6 text-sm text-text font-mono text-center focus:outline-none focus:border-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="w-full h-8 rounded-lg border border-border bg-bg pl-2 pr-6 text-sm text-text font-mono text-center focus:outline-none focus:border-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
               <span className="absolute right-2 top-1/2 -translate-y-1/2 text-sm text-text-muted font-mono">
                 %

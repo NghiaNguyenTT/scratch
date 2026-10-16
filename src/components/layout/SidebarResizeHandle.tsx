@@ -186,7 +186,7 @@ export function SidebarResizeHandle() {
       />
       {isDragging && (
         <div className="absolute top-3 right-2 z-50">
-          <div className="bg-text text-text-inverse text-xs font-medium px-2.5 py-1 rounded-md shadow-lg whitespace-nowrap">
+          <div className="bg-text text-text-inverse text-xs font-medium px-2.5 py-1 rounded-lg shadow-lg whitespace-nowrap">
             {Math.round(currentWidth)}px
           </div>
         </div>

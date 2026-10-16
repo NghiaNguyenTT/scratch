@@ -316,7 +316,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
       <div className={`flex items-center justify-between pl-4 pr-3 pb-2 border-b border-border shrink-0${isWindows ? " pt-2" : ""}`}>
         <div className="flex items-center gap-1">
           <div className="font-medium text-base">Notes</div>
-          <div className="text-text-muted font-medium text-2xs min-w-4.75 h-4.75 flex items-center justify-center px-1 bg-bg-muted rounded-sm mt-0.5 pt-px">
+          <div className="text-text-muted font-medium text-2xs min-w-4.75 h-4.75 flex items-center justify-center px-1 bg-bg-muted rounded-full mt-0.5 pt-px">
             {notes.length}
           </div>
         </div>
@@ -346,7 +346,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.Content
-                  className="min-w-40 bg-bg border border-border rounded-md shadow-lg py-1 z-50"
+                  className="min-w-40 bg-bg border border-border rounded-lg shadow-lg py-1 z-50"
                   sideOffset={5}
                   align="end"
                   onCloseAutoFocus={(e) => e.preventDefault()}
@@ -437,7 +437,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
     {/* Drag overlay — floating label while dragging */}
     <DragOverlay>
       {dragLabel && (
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-bg border border-border rounded-md shadow-lg text-sm text-text">
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-bg border border-border rounded-lg shadow-lg text-sm text-text">
           <NoteIcon className="w-3.5 h-3.5 stroke-[1.6] opacity-50 shrink-0" />
           {dragLabel}
           {dragCount > 1 && (

@@ -250,8 +250,8 @@ export function GeneralSettingsSection() {
         <p className="text-sm text-text-muted mb-4">
           Your notes are stored as markdown files in this folder
         </p>
-        <div className="flex items-center gap-2.5 p-2.5 rounded-[10px] border border-border mb-2.5">
-          <div className="p-2 rounded-md bg-bg-muted">
+        <div className="flex items-center gap-2.5 p-2.5 rounded-lg border border-border mb-2.5">
+          <div className="p-2 rounded-sm bg-bg-muted">
             <FolderIcon className="w-4.5 h-4.5 stroke-[1.5] text-text-muted" />
           </div>
           <p
@@ -315,7 +315,7 @@ export function GeneralSettingsSection() {
               Track changes and store backups of your notes using Git
             </p>
           </div>
-          <div className="flex gap-1 p-1 rounded-[10px] border border-border">
+          <div className="flex gap-1 p-1 rounded-full border border-border">
             <Button
               onClick={() => handleToggleGitEnabled(false)}
               variant={!gitEnabled ? "primary" : "ghost"}
@@ -335,7 +335,7 @@ export function GeneralSettingsSection() {
           </div>
         </div>
         {!gitEnabled ? null : !gitAvailable ? (
-          <div className="bg-bg-secondary rounded-[10px] border border-border p-4">
+          <div className="bg-bg-secondary rounded-lg border border-border p-4">
             <p className="text-sm text-text-muted">
               Git is not available on this system.{" "}
               <a
@@ -350,11 +350,11 @@ export function GeneralSettingsSection() {
             </p>
           </div>
         ) : isLoading ? (
-          <div className="rounded-[10px] border border-border p-4 flex items-center justify-center">
+          <div className="rounded-lg border border-border p-4 flex items-center justify-center">
             <SpinnerIcon className="w-4.5 h-4.5 stroke-[1.5] animate-spin text-text-muted" />
           </div>
         ) : !status?.isRepo ? (
-          <div className="bg-bg-secondary rounded-[10px] border border-border p-4">
+          <div className="bg-bg-secondary rounded-lg border border-border p-4">
             <p className="text-sm text-text-muted mb-2">
               Enable Git to track changes to your notes with version control.
               Your changes will be tracked automatically and you can commit and
@@ -371,7 +371,7 @@ export function GeneralSettingsSection() {
           </div>
         ) : (
           <>
-            <div className="rounded-[10px] border border-border p-4 space-y-2.5">
+            <div className="rounded-lg border border-border p-4 space-y-2.5">
               {/* Branch status */}
               <div className="flex items-center justify-between">
                 <span className="text-sm text-text font-medium">Status</span>
@@ -638,7 +638,7 @@ export function GeneralSettingsSection() {
               {/* Error display */}
               {lastError && (
                 <div className="pt-3 border-t border-border">
-                  <div className="bg-red-500/10 rounded-md p-3">
+                  <div className="bg-red-500/10 rounded-lg p-3">
                     <p className="text-sm text-red-500 first-letter:capitalize">
                       {lastError}
                     </p>
@@ -688,7 +688,7 @@ export function GeneralSettingsSection() {
               placeholder="Untitled"
             />
           </div>
-          <div className="text-2xs text-text-muted font-mono p-2 rounded-md bg-bg-muted mb-4">
+          <div className="text-2xs text-text-muted font-mono p-2 rounded-lg bg-bg-muted mb-4">
             Preview: {previewNoteName}
           </div>
 
@@ -782,7 +782,7 @@ function FoldersToggle() {
 
   if (foldersEnabled === null) {
     return (
-      <div className="flex gap-1 p-1 rounded-[10px] border border-border shrink-0">
+      <div className="flex gap-1 p-1 rounded-full border border-border shrink-0">
         <Button variant="ghost" size="xs" disabled>
           Off
         </Button>
@@ -794,7 +794,7 @@ function FoldersToggle() {
   }
 
   return (
-    <div className="flex gap-1 p-1 rounded-[10px] border border-border shrink-0">
+    <div className="flex gap-1 p-1 rounded-full border border-border shrink-0">
       <Button
         onClick={() => handleToggle(false)}
         variant={!foldersEnabled ? "primary" : "ghost"}
@@ -903,7 +903,7 @@ function IgnoredFoldersEditor() {
         {patterns.map((pattern) => (
           <span
             key={pattern}
-            className="inline-flex items-center gap-1 pl-2 pr-1 py-0.75 rounded-md bg-bg-muted text-2xs font-mono"
+            className="inline-flex items-center gap-1 pl-2 pr-1 py-0.75 rounded-full bg-bg-muted text-2xs font-mono"
           >
             {pattern}
             <button

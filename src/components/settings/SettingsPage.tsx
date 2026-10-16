@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   ArrowLeftIcon,
   FolderIcon,
@@ -14,6 +14,7 @@ import { ShortcutsSettingsSection } from "./ShortcutsSettingsSection";
 import { AboutSettingsSection } from "./AboutSettingsSection";
 import { ToolsSettingsSection } from "./ToolsSettingsSection";
 import { mod, isMac, isWindows } from "../../lib/platform";
+import * as cliService from "../../services/cli";
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -36,7 +37,29 @@ const tabs: {
 
 export function SettingsPage({ onBack }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const [cliSupported, setCliSupported] = useState<boolean | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // The Integrations tab only has content where the `scratch` CLI tool can be
+  // installed (macOS), so hide it everywhere else.
+  useEffect(() => {
+    cliService
+      .getCliStatus()
+      .then((status) => setCliSupported(status.supported))
+      .catch(() => setCliSupported(true));
+  }, []);
+
+  const visibleTabs = useMemo(
+    () => tabs.filter((tab) => tab.id !== "tools" || cliSupported !== false),
+    [cliSupported],
+  );
+
+  // If Integrations disappears while it is the active tab, fall back to Folder
+  useEffect(() => {
+    if (cliSupported === false && activeTab === "tools") {
+      setActiveTab("general");
+    }
+  }, [cliSupported, activeTab]);
 
   // Reset scroll position when tab changes
   useEffect(() => {
@@ -48,29 +71,16 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey) {
-        if (e.key === "1") {
-          e.preventDefault();
-          setActiveTab("general");
-        } else if (e.key === "2") {
-          e.preventDefault();
-          setActiveTab("tools");
-        } else if (e.key === "3") {
-          e.preventDefault();
-          setActiveTab("editor");
-        } else if (e.key === "4") {
-          e.preventDefault();
-          setActiveTab("shortcuts");
-        } else if (e.key === "5") {
-          e.preventDefault();
-          setActiveTab("about");
-        }
-      }
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const tab = visibleTabs.find((t) => t.shortcut === e.key);
+      if (!tab) return;
+      e.preventDefault();
+      setActiveTab(tab.id);
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [visibleTabs]);
 
   return (
     <div className="h-full flex bg-bg w-full">
@@ -94,7 +104,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
 
         {/* Navigation tabs */}
         <nav className="flex-1 p-2 flex flex-col gap-1">
-          {tabs.map((tab) => {
+          {visibleTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (

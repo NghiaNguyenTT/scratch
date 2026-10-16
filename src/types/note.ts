@@ -80,7 +80,6 @@ export interface Settings {
   toolbarHidden?: boolean;
   defaultNoteName?: string;
   interfaceZoom?: number;
-  ollamaModel?: string;
   ignoredPatterns?: string[];
   customColorsLight?: CustomColors;
   customColorsDark?: CustomColors;

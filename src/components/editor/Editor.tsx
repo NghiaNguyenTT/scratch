@@ -52,7 +52,6 @@ import { SlashCommand } from "./SlashCommand";
 import { Wikilink, type WikilinkStorage } from "./Wikilink";
 import { WikilinkSuggestion } from "./WikilinkSuggestion";
 import { EditorContextMenu } from "./EditorContextMenu";
-import type { AiProvider } from "../../services/ai";
 import { EditorWidthHandles } from "./EditorWidthHandle";
 import { ScratchBlockMath, normalizeBlockMath, katexMacros } from "./MathExtensions";
 import { cn } from "../../lib/utils";
@@ -382,7 +381,7 @@ function FormatBar({
         </Tooltip>
         <DropdownMenu.Portal>
           <DropdownMenu.Content
-            className="p-2.5 bg-bg border border-border rounded-md shadow-lg z-50"
+            className="p-2.5 bg-bg border border-border rounded-lg shadow-lg z-50"
             onCloseAutoFocus={(e) => e.preventDefault()}
           >
             <GridPicker
@@ -426,10 +425,6 @@ interface EditorProps {
   onEditorReady?: (editor: TiptapEditor | null) => void;
   onSaveToFolder?: () => void;
   saveToFolderDisabled?: boolean;
-  aiProvider?: AiProvider | null;
-  onSelectAiProvider?: (provider: AiProvider) => void;
-  onRunAiPrompt?: (prompt: string) => void;
-  onOpenAiPromptModal?: (initialPrompt: string) => void;
 }
 
 /**
@@ -493,10 +488,6 @@ export function Editor({
   previewMode,
   onSaveToFolder,
   saveToFolderDisabled,
-  aiProvider,
-  onSelectAiProvider,
-  onRunAiPrompt,
-  onOpenAiPromptModal,
 }: EditorProps) {
   // Always call the hook (rules of hooks), but it returns null outside NotesProvider
   const notesCtx = useOptionalNotes();
@@ -754,15 +745,6 @@ export function Editor({
       await saveImmediately(loadedNoteIdRef.current, markdown);
     }
   }, [saveImmediately, getMarkdown]);
-
-  // Run an agent on the note: flush pending edits first so the CLI always
-  // works on the content currently shown in the editor
-  const runAiPrompt = useCallback(
-    (prompt: string) => {
-      void flushPendingSave().then(() => onRunAiPrompt?.(prompt));
-    },
-    [flushPendingSave, onRunAiPrompt],
-  );
 
   // Schedule a debounced save (markdown computed only when timer fires)
   const scheduleSave = useCallback(() => {
@@ -2379,7 +2361,7 @@ export function Editor({
             </Tooltip>
             <DropdownMenu.Portal>
               <DropdownMenu.Content
-                className="min-w-35 bg-bg border border-border rounded-md shadow-lg py-1 z-50"
+                className="min-w-35 bg-bg border border-border rounded-lg shadow-lg py-1 z-50"
                 sideOffset={5}
                 align="end"
                 onCloseAutoFocus={(e) => {
@@ -2543,10 +2525,6 @@ export function Editor({
               <EditorContextMenu
                 editor={editor}
                 notes={notes ?? null}
-                aiProvider={aiProvider}
-                onSelectAiProvider={onSelectAiProvider}
-                onRunAiPrompt={runAiPrompt}
-                onOpenAiPromptModal={onOpenAiPromptModal}
                 onOpenWikilink={openWikilinkByTitle}
                 onExportPdf={
                   previewMode
