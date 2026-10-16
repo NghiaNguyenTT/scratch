@@ -1266,9 +1266,11 @@ export function Editor({
   // Track reloadVersion to detect manual refreshes
   const lastReloadVersionRef = useRef(0);
 
-  // Notify parent component when editor is ready
+  // Notify parent component when editor is ready, and clear the parent's
+  // reference on teardown so it never holds a destroyed instance
   useEffect(() => {
     onEditorReady?.(editor);
+    return () => onEditorReady?.(null);
   }, [editor, onEditorReady]);
 
   // Sync notes list into editor storage for wikilink autocomplete

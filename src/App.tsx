@@ -406,9 +406,17 @@ function AppContent() {
     setInterfaceZoom,
   ]);
 
+  // Stable identity so Editor's onEditorReady effect doesn't re-run every render
+  const handleEditorReady = useCallback((editor: TiptapEditor | null) => {
+    editorRef.current = editor;
+  }, []);
+
   const handleClosePalette = useCallback(() => {
     setPaletteOpen(false);
-    editorRef.current?.commands.focus();
+    // The editor is absent in settings and graph views, and a destroyed Tiptap
+    // instance throws on any command access, so check both.
+    const editor = editorRef.current;
+    if (editor && !editor.isDestroyed) editor.commands.focus();
   }, []);
 
   if (isLoading) {
@@ -455,9 +463,7 @@ function AppContent() {
               onToggleSidebar={toggleSidebar}
               sidebarVisible={sidebarVisible}
               focusMode={focusMode}
-              onEditorReady={(editor) => {
-                editorRef.current = editor;
-              }}
+              onEditorReady={handleEditorReady}
             />
           </>
         )}
