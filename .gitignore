@@ -32,6 +32,7 @@ src-tauri/gen/
 
 # Agent workspace config
 .zcode/
+.openchamber/
 
 # Release artifacts
 latest.json
