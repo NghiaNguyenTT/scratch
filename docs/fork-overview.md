@@ -12,14 +12,15 @@ and exactly how it diverges from upstream.
 | **Product** | Scratch — minimalist, offline-first markdown notes app |
 | **Stack** | Tauri v2 (Rust) + React 19 / TypeScript / Tailwind v4 + TipTap 3 |
 | **License** | MIT (forking is explicitly sanctioned upstream) |
-| **Fork version** | `1.2.0` (`package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`) |
+| **Fork version** | `1.2.1` (`package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`) |
 | **Upstream version** | `1.0.0` |
 
 ## Divergence from upstream
 
 The fork branched from upstream commit `9126a5a` (*"chore: bump version to 1.0.0"*)
 and has added **9 commits** on top, followed by release commits (v1.1.7, then v1.2.0 —
-AI removal plus the shadcn-neutral restyle):
+AI removal plus the shadcn-neutral restyle — and v1.2.1, a bug-fix release covering the
+command-palette close crash, the inline-code colour and the dark-mode PDF page background):
 
 ```
 2b364d3  feat: simplify font selection in Appearance settings
@@ -33,8 +34,8 @@ b553d45  feat: PDF export with bookmarks, margins, and font-size options
 9f60153  feat: wiki-link graph view, hover page previews, fork updater
 ```
 
-Measured against upstream: **62 files changed, +7,283 / −5,396 lines** (as of the
-v1.2.0 release).
+Measured against upstream: **62 files changed, +7,322 / −5,408 lines** (as of the
+v1.2.1 release).
 
 Upstream has **no newer commits** — the fork is fully current with `erictli/scratch@main`.
 
